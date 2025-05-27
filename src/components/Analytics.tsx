@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
@@ -12,6 +11,14 @@ interface AnalyticsData {
   totalSearches: number;
   skillsDistribution: Array<{ name: string; value: number }>;
   uploadTrend: Array<{ date: string; count: number }>;
+}
+
+interface ParsedResumeData {
+  skills?: string[];
+  full_name?: string;
+  email?: string;
+  phone_number?: string;
+  [key: string]: any;
 }
 
 const Analytics = () => {
@@ -59,13 +66,19 @@ const Analytics = () => {
       // Skills distribution
       const skillsMap = new Map<string, number>();
       resumes?.forEach(resume => {
-        if (resume.parsed_data?.skills) {
-          resume.parsed_data.skills.forEach((skill: string) => {
-            const normalizedSkill = skill.toLowerCase().trim();
-            skillsMap.set(normalizedSkill, (skillsMap.get(normalizedSkill) || 0) + 1);
-          });
+        // Handle parsed_data skills
+        if (resume.parsed_data && typeof resume.parsed_data === 'object') {
+          const parsedData = resume.parsed_data as ParsedResumeData;
+          if (parsedData.skills && Array.isArray(parsedData.skills)) {
+            parsedData.skills.forEach((skill: string) => {
+              const normalizedSkill = skill.toLowerCase().trim();
+              skillsMap.set(normalizedSkill, (skillsMap.get(normalizedSkill) || 0) + 1);
+            });
+          }
         }
-        if (resume.skills_extracted) {
+        
+        // Handle skills_extracted
+        if (resume.skills_extracted && Array.isArray(resume.skills_extracted)) {
           resume.skills_extracted.forEach(skill => {
             const normalizedSkill = skill.toLowerCase().trim();
             skillsMap.set(normalizedSkill, (skillsMap.get(normalizedSkill) || 0) + 1);
