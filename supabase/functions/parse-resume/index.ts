@@ -14,7 +14,10 @@ serve(async (req) => {
   }
 
   try {
-    const { resumeId } = await req.json();
+    // Parse request body once and store it
+    const requestBody = await req.json();
+    const { resumeId } = requestBody;
+    console.log('Processing resume ID:', resumeId);
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -29,17 +32,26 @@ serve(async (req) => {
       .eq('id', resumeId)
       .single();
 
-    if (resumeError) throw resumeError;
+    if (resumeError) {
+      console.error('Resume fetch error:', resumeError);
+      throw resumeError;
+    }
+
+    console.log('Resume found:', resume.file_name);
 
     // Download file from storage
     const { data: fileData, error: fileError } = await supabase.storage
       .from('user-resumes')
       .download(resume.storage_path);
 
-    if (fileError) throw fileError;
+    if (fileError) {
+      console.error('File download error:', fileError);
+      throw fileError;
+    }
 
     // Convert file to text (simplified - in production, use proper PDF/DOCX parsers)
     const fileContent = await fileData.text();
+    console.log('File content length:', fileContent.length);
 
     // Call Groq API for parsing
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -100,8 +112,22 @@ Extract and return as JSON object with these fields:
       }),
     });
 
+    if (!groqResponse.ok) {
+      console.error('Groq API error:', groqResponse.status, await groqResponse.text());
+      throw new Error(`Groq API error: ${groqResponse.status}`);
+    }
+
     const groqData = await groqResponse.json();
+    console.log('Groq response received');
+
+    // Check if response has the expected structure
+    if (!groqData.choices || !groqData.choices[0] || !groqData.choices[0].message) {
+      console.error('Unexpected Groq response structure:', groqData);
+      throw new Error('Invalid response from AI service');
+    }
+
     const parsedDataText = groqData.choices[0].message.content;
+    console.log('Raw AI response:', parsedDataText);
     
     // Clean up the response and parse JSON
     let parsedData;
@@ -109,8 +135,10 @@ Extract and return as JSON object with these fields:
       // Remove any markdown formatting
       const cleanedText = parsedDataText.replace(/```json\n?|\n?```/g, '').trim();
       parsedData = JSON.parse(cleanedText);
+      console.log('Successfully parsed JSON data');
     } catch (parseError) {
       console.error('JSON parsing error:', parseError);
+      console.error('Failed to parse text:', parsedDataText);
       throw new Error('Failed to parse AI response as JSON');
     }
 
@@ -127,7 +155,12 @@ Extract and return as JSON object with these fields:
       })
       .eq('id', resumeId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('Update error:', updateError);
+      throw updateError;
+    }
+
+    console.log('Resume parsing completed successfully');
 
     return new Response(JSON.stringify({ success: true, parsedData }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -137,15 +170,20 @@ Extract and return as JSON object with these fields:
     console.error('Parse resume error:', error);
     
     // Update status to error
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    
-    const { resumeId } = await req.json();
-    await supabase
-      .from('resumes')
-      .update({ upload_status: 'parsing_error' })
-      .eq('id', resumeId);
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      // Parse request body again for error handling
+      const { resumeId } = await req.clone().json();
+      await supabase
+        .from('resumes')
+        .update({ upload_status: 'parsing_error' })
+        .eq('id', resumeId);
+    } catch (updateError) {
+      console.error('Failed to update error status:', updateError);
+    }
 
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
