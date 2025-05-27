@@ -12,6 +12,8 @@ import {
   Brain,
   LogOut
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 interface SidebarProps {
   activeTab: string;
@@ -19,6 +21,9 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ activeTab, setActiveTab }: SidebarProps) => {
+  const { signOut } = useAuth();
+  const { toast } = useToast();
+
   const menuItems = [
     { id: "overview", label: "Overview", icon: Home },
     { id: "upload", label: "Upload Resumes", icon: Upload },
@@ -26,6 +31,22 @@ const Sidebar = ({ activeTab, setActiveTab }: SidebarProps) => {
     { id: "search", label: "Search Candidates", icon: Search },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
   ];
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out successfully",
+        description: "You have been logged out of your account.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to sign out. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="w-64 bg-white/80 backdrop-blur-sm border-r border-gray-200 min-h-screen">
@@ -71,7 +92,11 @@ const Sidebar = ({ activeTab, setActiveTab }: SidebarProps) => {
           <Settings className="h-4 w-4 mr-3" />
           Settings
         </Button>
-        <Button variant="ghost" className="w-full justify-start text-gray-600 hover:text-gray-900">
+        <Button 
+          variant="ghost" 
+          className="w-full justify-start text-gray-600 hover:text-gray-900"
+          onClick={handleSignOut}
+        >
           <LogOut className="h-4 w-4 mr-3" />
           Sign Out
         </Button>

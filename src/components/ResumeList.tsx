@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,62 +17,145 @@ import {
   Mail,
   Phone
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+
+interface Resume {
+  id: string;
+  file_name: string;
+  storage_path: string;
+  upload_status: string;
+  parsed_data: any;
+  created_at: string;
+}
 
 const ResumeList = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Mock data - will be replaced with real data from Supabase
-  const mockResumes = [
-    {
-      id: 1,
-      name: "John Smith",
-      title: "Senior Software Engineer",
-      email: "john.smith@email.com",
-      phone: "+1 (555) 123-4567",
-      location: "San Francisco, CA",
-      uploadDate: "2024-01-15",
-      skills: ["React", "TypeScript", "Node.js", "AWS", "Python"],
-      experience: "5+ years",
-      status: "parsed"
-    },
-    {
-      id: 2,
-      name: "Sarah Johnson",
-      title: "Product Manager",
-      email: "sarah.johnson@email.com",
-      phone: "+1 (555) 987-6543",
-      location: "New York, NY",
-      uploadDate: "2024-01-14",
-      skills: ["Product Strategy", "Agile", "Analytics", "Leadership"],
-      experience: "7+ years",
-      status: "parsing"
-    },
-    {
-      id: 3,
-      name: "Michael Chen",
-      title: "UX Designer",
-      email: "michael.chen@email.com",
-      phone: "+1 (555) 456-7890",
-      location: "Austin, TX",
-      uploadDate: "2024-01-13",
-      skills: ["Figma", "User Research", "Prototyping", "Design Systems"],
-      experience: "4+ years",
-      status: "parsed"
+  const [resumes, setResumes] = useState<Resume[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (user) {
+      fetchResumes();
     }
-  ];
+  }, [user]);
+
+  const fetchResumes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('resumes')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setResumes(data || []);
+    } catch (error) {
+      console.error('Error fetching resumes:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load resumes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'parsed':
+      case 'parsed_success':
         return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Ready</Badge>;
       case 'parsing':
         return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Processing</Badge>;
-      case 'error':
+      case 'parsing_error':
         return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Error</Badge>;
+      case 'uploaded':
+        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Pending Parse</Badge>;
       default:
         return <Badge variant="secondary">Unknown</Badge>;
     }
   };
+
+  const generateScreeningQuestions = async (resume: Resume) => {
+    if (!resume.parsed_data) {
+      toast({
+        title: 'Unable to generate questions',
+        description: 'Resume data not available.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-screening-questions', {
+        body: { resumeData: resume.parsed_data }
+      });
+
+      if (error) throw error;
+
+      // You can display the questions in a modal or new component
+      console.log('Generated questions:', data.questions);
+      toast({
+        title: 'Questions Generated',
+        description: 'Screening questions have been generated successfully.',
+      });
+    } catch (error) {
+      console.error('Error generating questions:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate screening questions.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const generateOutreach = async (resume: Resume) => {
+    if (!resume.parsed_data) {
+      toast({
+        title: 'Unable to generate outreach',
+        description: 'Resume data not available.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-outreach', {
+        body: { resumeData: resume.parsed_data }
+      });
+
+      if (error) throw error;
+
+      // You can display the outreach message in a modal or new component
+      console.log('Generated outreach:', data.message);
+      toast({
+        title: 'Outreach Generated',
+        description: 'Personalized outreach message has been generated.',
+      });
+    } catch (error) {
+      console.error('Error generating outreach:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate outreach message.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your resumes...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -106,57 +189,72 @@ const ResumeList = () => {
 
       {/* Resume Cards */}
       <div className="space-y-4">
-        {mockResumes.map((resume) => (
+        {resumes.map((resume) => (
           <Card key={resume.id} className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300">
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="text-xl font-semibold text-gray-900 mb-1">{resume.name}</h3>
-                      <p className="text-lg text-gray-600 mb-2">{resume.title}</p>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-1">
+                        {resume.parsed_data?.full_name || resume.file_name}
+                      </h3>
+                      <p className="text-lg text-gray-600 mb-2">
+                        {resume.parsed_data?.professional_summary?.split('.')[0] || 'Professional'}
+                      </p>
                       <div className="flex items-center space-x-4 text-sm text-gray-500 mb-3">
-                        <div className="flex items-center space-x-1">
-                          <Mail className="h-4 w-4" />
-                          <span>{resume.email}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Phone className="h-4 w-4" />
-                          <span>{resume.phone}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="h-4 w-4" />
-                          <span>{resume.location}</span>
-                        </div>
+                        {resume.parsed_data?.email && (
+                          <div className="flex items-center space-x-1">
+                            <Mail className="h-4 w-4" />
+                            <span>{resume.parsed_data.email}</span>
+                          </div>
+                        )}
+                        {resume.parsed_data?.phone_number && (
+                          <div className="flex items-center space-x-1">
+                            <Phone className="h-4 w-4" />
+                            <span>{resume.parsed_data.phone_number}</span>
+                          </div>
+                        )}
+                        {resume.parsed_data?.location && (
+                          <div className="flex items-center space-x-1">
+                            <MapPin className="h-4 w-4" />
+                            <span>{resume.parsed_data.location}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {getStatusBadge(resume.status)}
+                      {getStatusBadge(resume.upload_status)}
                       <Button variant="ghost" size="sm">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                   
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600 mb-2">Skills:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {resume.skills.map((skill, index) => (
-                        <Badge key={index} variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-                          {skill}
-                        </Badge>
-                      ))}
+                  {resume.parsed_data?.skills && (
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-2">Skills:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {resume.parsed_data.skills.slice(0, 6).map((skill: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100">
+                            {skill}
+                          </Badge>
+                        ))}
+                        {resume.parsed_data.skills.length > 6 && (
+                          <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                            +{resume.parsed_data.skills.length - 6} more
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <div className="flex items-center space-x-1">
                         <Calendar className="h-4 w-4" />
-                        <span>Uploaded {resume.uploadDate}</span>
+                        <span>Uploaded {new Date(resume.created_at).toLocaleDateString()}</span>
                       </div>
-                      <span>•</span>
-                      <span>{resume.experience} experience</span>
                     </div>
                     
                     <div className="flex items-center space-x-2">
@@ -164,11 +262,21 @@ const ResumeList = () => {
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => generateScreeningQuestions(resume)}
+                        disabled={!resume.parsed_data}
+                      >
                         <MessageSquare className="h-4 w-4 mr-2" />
                         Generate Questions
                       </Button>
-                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                      <Button 
+                        size="sm" 
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                        onClick={() => generateOutreach(resume)}
+                        disabled={!resume.parsed_data}
+                      >
                         <Mail className="h-4 w-4 mr-2" />
                         Draft Outreach
                       </Button>
@@ -181,8 +289,8 @@ const ResumeList = () => {
         ))}
       </div>
 
-      {/* Empty State (when no resumes) */}
-      {mockResumes.length === 0 && (
+      {/* Empty State */}
+      {resumes.length === 0 && (
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardContent className="py-16 text-center">
             <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />

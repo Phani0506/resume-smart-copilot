@@ -4,16 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+
+interface UploadedFile {
+  name: string;
+  size: string;
+  status: 'uploading' | 'uploaded' | 'parsing' | 'parsed' | 'error';
+  id?: string;
+}
 
 const ResumeUpload = () => {
   const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{
-    name: string;
-    size: string;
-    status: 'uploading' | 'uploaded' | 'parsing' | 'parsed' | 'error';
-  }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -49,45 +54,96 @@ const ResumeUpload = () => {
   };
 
   const uploadFile = async (file: File) => {
-    const fileData = {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to upload resumes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const fileData: UploadedFile = {
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-      status: 'uploading' as const,
+      status: 'uploading',
     };
 
     setUploadedFiles(prev => [...prev, fileData]);
 
-    // Simulate upload process
-    setTimeout(() => {
+    try {
+      // Create unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: storageData, error: storageError } = await supabase.storage
+        .from('user-resumes')
+        .upload(filePath, file);
+
+      if (storageError) throw storageError;
+
+      // Insert record to database
+      const { data: resumeData, error: dbError } = await supabase
+        .from('resumes')
+        .insert({
+          user_id: user.id,
+          file_name: file.name,
+          storage_path: filePath,
+          content_type: file.type,
+          upload_status: 'uploaded'
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
       setUploadedFiles(prev => 
         prev.map(f => 
-          f.name === file.name ? { ...f, status: 'uploaded' } : f
+          f.name === file.name ? { ...f, status: 'uploaded', id: resumeData.id } : f
+        )
+      );
+
+      // Start parsing
+      setUploadedFiles(prev => 
+        prev.map(f => 
+          f.name === file.name ? { ...f, status: 'parsing' } : f
+        )
+      );
+
+      // Call parsing edge function
+      const { data: parseResult, error: parseError } = await supabase.functions.invoke('parse-resume', {
+        body: { resumeId: resumeData.id }
+      });
+
+      if (parseError) throw parseError;
+
+      setUploadedFiles(prev => 
+        prev.map(f => 
+          f.name === file.name ? { ...f, status: 'parsed' } : f
+        )
+      );
+
+      toast({
+        title: "Resume processed successfully",
+        description: `${file.name} has been uploaded and parsed.`,
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadedFiles(prev => 
+        prev.map(f => 
+          f.name === file.name ? { ...f, status: 'error' } : f
         )
       );
       
-      // Simulate parsing
-      setTimeout(() => {
-        setUploadedFiles(prev => 
-          prev.map(f => 
-            f.name === file.name ? { ...f, status: 'parsing' } : f
-          )
-        );
-        
-        // Simulate parsing completion
-        setTimeout(() => {
-          setUploadedFiles(prev => 
-            prev.map(f => 
-              f.name === file.name ? { ...f, status: 'parsed' } : f
-            )
-          );
-          
-          toast({
-            title: "Resume processed successfully",
-            description: `${file.name} has been uploaded and parsed.`,
-          });
-        }, 3000);
-      }, 1000);
-    }, 2000);
+      toast({
+        title: "Upload failed",
+        description: "There was an error uploading your resume. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusIcon = (status: string) => {

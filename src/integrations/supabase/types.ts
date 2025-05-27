@@ -93,6 +93,48 @@ export type Database = {
         }
         Relationships: []
       }
+      resumes: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          file_name: string
+          id: string
+          parsed_data: Json | null
+          skills_extracted: string[] | null
+          storage_path: string
+          updated_at: string
+          upload_status: string
+          user_id: string
+          verification_notes: Json | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          file_name: string
+          id?: string
+          parsed_data?: Json | null
+          skills_extracted?: string[] | null
+          storage_path: string
+          updated_at?: string
+          upload_status?: string
+          user_id: string
+          verification_notes?: Json | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          file_name?: string
+          id?: string
+          parsed_data?: Json | null
+          skills_extracted?: string[] | null
+          storage_path?: string
+          updated_at?: string
+          upload_status?: string
+          user_id?: string
+          verification_notes?: Json | null
+        }
+        Relationships: []
+      }
       search_candidates: {
         Row: {
           candidate_id: string
@@ -152,6 +194,51 @@ export type Database = {
           id?: string
           query?: string
           results_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      search_queries_new: {
+        Row: {
+          created_at: string
+          id: string
+          query: string
+          results_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          query: string
+          results_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          query?: string
+          results_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          groq_api_key_encrypted: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          groq_api_key_encrypted?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          groq_api_key_encrypted?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

@@ -1,5 +1,4 @@
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, Search, User, FileText, Brain, BarChart3 } from "lucide-react";
@@ -7,7 +6,6 @@ import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // This will be replaced with actual auth
 
   const features = [
     {
@@ -42,11 +40,6 @@ const Index = () => {
     }
   ];
 
-  if (isLoggedIn) {
-    navigate('/dashboard');
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
@@ -61,10 +54,10 @@ const Index = () => {
             </span>
           </div>
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" onClick={() => setIsLoggedIn(true)}>
+            <Button variant="ghost" onClick={() => navigate('/auth')}>
               Sign In
             </Button>
-            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" onClick={() => setIsLoggedIn(true)}>
+            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" onClick={() => navigate('/auth')}>
               Get Started
             </Button>
           </div>
@@ -84,7 +77,7 @@ const Index = () => {
             <Button 
               size="lg" 
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-8 py-3 text-lg"
-              onClick={() => setIsLoggedIn(true)}
+              onClick={() => navigate('/auth')}
             >
               Start Free Trial
             </Button>
@@ -137,7 +130,7 @@ const Index = () => {
           <Button 
             size="lg" 
             className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-3 text-lg font-semibold"
-            onClick={() => setIsLoggedIn(true)}
+            onClick={() => navigate('/auth')}
           >
             Get Started Today
           </Button>

@@ -1,216 +1,279 @@
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { BarChart3, Users, FileText, Search, TrendingUp, MapPin } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { FileText, Users, Search, TrendingUp } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+
+interface AnalyticsData {
+  totalResumes: number;
+  parsedResumes: number;
+  totalSearches: number;
+  skillsDistribution: Array<{ name: string; value: number }>;
+  uploadTrend: Array<{ date: string; count: number }>;
+}
 
 const Analytics = () => {
-  // Mock data - will be replaced with real data from Supabase
-  const topSkills = [
-    { skill: "JavaScript", count: 12, percentage: 85 },
-    { skill: "React", count: 10, percentage: 71 },
-    { skill: "Python", count: 9, percentage: 64 },
-    { skill: "TypeScript", count: 8, percentage: 57 },
-    { skill: "Node.js", count: 7, percentage: 50 },
-    { skill: "AWS", count: 6, percentage: 43 },
-    { skill: "SQL", count: 6, percentage: 43 },
-    { skill: "Docker", count: 5, percentage: 36 },
-    { skill: "Git", count: 5, percentage: 36 },
-    { skill: "MongoDB", count: 4, percentage: 29 }
-  ];
+  const [data, setData] = useState<AnalyticsData>({
+    totalResumes: 0,
+    parsedResumes: 0,
+    totalSearches: 0,
+    skillsDistribution: [],
+    uploadTrend: []
+  });
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  const locationDistribution = [
-    { location: "San Francisco, CA", count: 4 },
-    { location: "New York, NY", count: 3 },
-    { location: "Austin, TX", count: 2 },
-    { location: "Seattle, WA", count: 2 },
-    { location: "Chicago, IL", count: 1 },
-    { location: "Boston, MA", count: 1 },
-    { location: "Remote", count: 1 }
-  ];
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
 
-  const experienceLevels = [
-    { level: "Senior (5+ years)", count: 6, percentage: 43 },
-    { level: "Mid-level (3-5 years)", count: 5, percentage: 36 },
-    { level: "Junior (1-3 years)", count: 2, percentage: 14 },
-    { level: "Entry level (<1 year)", count: 1, percentage: 7 }
-  ];
+  useEffect(() => {
+    if (user) {
+      fetchAnalytics();
+    }
+  }, [user]);
+
+  const fetchAnalytics = async () => {
+    try {
+      // Get resume stats
+      const { data: resumes, error: resumeError } = await supabase
+        .from('resumes')
+        .select('upload_status, parsed_data, created_at, skills_extracted')
+        .eq('user_id', user?.id);
+
+      if (resumeError) throw resumeError;
+
+      // Get search stats
+      const { data: searches, error: searchError } = await supabase
+        .from('search_queries_new')
+        .select('created_at')
+        .eq('user_id', user?.id);
+
+      if (searchError) throw searchError;
+
+      // Process data
+      const totalResumes = resumes?.length || 0;
+      const parsedResumes = resumes?.filter(r => r.upload_status === 'parsed_success').length || 0;
+      const totalSearches = searches?.length || 0;
+
+      // Skills distribution
+      const skillsMap = new Map<string, number>();
+      resumes?.forEach(resume => {
+        if (resume.parsed_data?.skills) {
+          resume.parsed_data.skills.forEach((skill: string) => {
+            const normalizedSkill = skill.toLowerCase().trim();
+            skillsMap.set(normalizedSkill, (skillsMap.get(normalizedSkill) || 0) + 1);
+          });
+        }
+        if (resume.skills_extracted) {
+          resume.skills_extracted.forEach(skill => {
+            const normalizedSkill = skill.toLowerCase().trim();
+            skillsMap.set(normalizedSkill, (skillsMap.get(normalizedSkill) || 0) + 1);
+          });
+        }
+      });
+
+      const skillsDistribution = Array.from(skillsMap.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 8);
+
+      // Upload trend (last 7 days)
+      const uploadTrend = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        const count = resumes?.filter(resume => {
+          const resumeDate = new Date(resume.created_at).toISOString().split('T')[0];
+          return resumeDate === dateStr;
+        }).length || 0;
+
+        uploadTrend.push({
+          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count
+        });
+      }
+
+      setData({
+        totalResumes,
+        parsedResumes,
+        totalSearches,
+        skillsDistribution,
+        uploadTrend
+      });
+
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Talent Pool Analytics</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Analytics Dashboard</h1>
         <p className="text-gray-600">
-          Insights and trends from your candidate database to help you understand your talent pool.
+          Insights and trends from your talent pool and recruitment activities.
         </p>
       </div>
 
-      {/* Overview Stats */}
+      {/* Key Metrics */}
       <div className="grid md:grid-cols-4 gap-6">
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardContent className="p-6">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Resumes</p>
-                <p className="text-3xl font-bold text-blue-600">14</p>
-              </div>
-              <FileText className="h-8 w-8 text-blue-600" />
+              <CardTitle className="text-lg text-gray-700">Total Resumes</CardTitle>
+              <FileText className="h-5 w-5 text-blue-600" />
             </div>
-            <p className="text-xs text-gray-500 mt-2">+3 this week</p>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-600">{data.totalResumes}</div>
+            <p className="text-sm text-gray-500 mt-1">Uploaded to your pool</p>
           </CardContent>
         </Card>
-
+        
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardContent className="p-6">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Avg. Skills per Candidate</p>
-                <p className="text-3xl font-bold text-indigo-600">8.5</p>
-              </div>
-              <BarChart3 className="h-8 w-8 text-indigo-600" />
+              <CardTitle className="text-lg text-gray-700">Parsed Candidates</CardTitle>
+              <Users className="h-5 w-5 text-indigo-600" />
             </div>
-            <p className="text-xs text-gray-500 mt-2">Above industry average</p>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-indigo-600">{data.parsedResumes}</div>
+            <p className="text-sm text-gray-500 mt-1">AI-processed profiles</p>
           </CardContent>
         </Card>
-
+        
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardContent className="p-6">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Search Queries</p>
-                <p className="text-3xl font-bold text-green-600">28</p>
-              </div>
-              <Search className="h-8 w-8 text-green-600" />
+              <CardTitle className="text-lg text-gray-700">Total Searches</CardTitle>
+              <Search className="h-5 w-5 text-green-600" />
             </div>
-            <p className="text-xs text-gray-500 mt-2">12 unique searches</p>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-600">{data.totalSearches}</div>
+            <p className="text-sm text-gray-500 mt-1">Semantic searches performed</p>
           </CardContent>
         </Card>
-
+        
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardContent className="p-6">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Match Rate</p>
-                <p className="text-3xl font-bold text-purple-600">76%</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-purple-600" />
+              <CardTitle className="text-lg text-gray-700">Parse Rate</CardTitle>
+              <TrendingUp className="h-5 w-5 text-purple-600" />
             </div>
-            <p className="text-xs text-gray-500 mt-2">Successful matches</p>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-purple-600">
+              {data.totalResumes > 0 ? Math.round((data.parsedResumes / data.totalResumes) * 100) : 0}%
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Successfully processed</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Skills Distribution */}
-      <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle>Top Skills in Your Talent Pool</CardTitle>
-          <CardDescription>
-            Most common skills found across all candidate resumes
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {topSkills.map((item, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
-                    <span className="text-sm font-semibold text-blue-600">{index + 1}</span>
-                  </div>
-                  <span className="font-medium text-gray-900">{item.skill}</span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
-                      style={{ width: `${item.percentage}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-medium text-gray-600 w-12 text-right">{item.count}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Experience Levels */}
+      {/* Charts */}
+      <div className="grid lg:grid-cols-2 gap-8">
+        {/* Skills Distribution */}
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
-            <CardTitle>Experience Distribution</CardTitle>
+            <CardTitle>Top Skills Distribution</CardTitle>
             <CardDescription>
-              Breakdown of experience levels in your candidate pool
+              Most common skills across all candidates in your database
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {experienceLevels.map((level, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">{level.level}</span>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"
-                        style={{ width: `${level.percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-600 w-8 text-right">{level.count}</span>
-                  </div>
+            {data.skillsDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={data.skillsDistribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {data.skillsDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <FileText className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                  <p>No skills data available</p>
+                  <p className="text-sm">Upload and parse some resumes to see skills distribution</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Location Distribution */}
+        {/* Upload Trend */}
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
-            <CardTitle>Geographic Distribution</CardTitle>
+            <CardTitle>Upload Trend (Last 7 Days)</CardTitle>
             <CardDescription>
-              Where your candidates are located
+              Number of resumes uploaded per day
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {locationDistribution.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <MapPin className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-700">{item.location}</span>
-                  </div>
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                    {item.count}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={data.uploadTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* Trends Card */}
-      <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0 shadow-lg">
+      {/* Additional Insights */}
+      <Card className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-white">Talent Pool Insights</CardTitle>
-          <CardDescription className="text-purple-100">
-            Key observations from your candidate database
-          </CardDescription>
+          <CardTitle className="text-white">Insights & Recommendations</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <h4 className="font-semibold text-white">Trending Skills</h4>
-              <ul className="space-y-2 text-purple-100">
-                <li>• TypeScript adoption increasing (57% of developers)</li>
-                <li>• Strong cloud expertise with AWS dominance</li>
-                <li>• High React proficiency in frontend developers</li>
+            <div>
+              <h4 className="font-semibold mb-2">Talent Pool Health</h4>
+              <ul className="space-y-1 text-blue-100">
+                <li>• {data.totalResumes} total candidates in your database</li>
+                <li>• {data.parsedResumes} profiles ready for search</li>
+                <li>• {data.skillsDistribution.length} unique skills identified</li>
               </ul>
             </div>
-            <div className="space-y-3">
-              <h4 className="font-semibold text-white">Recommendations</h4>
-              <ul className="space-y-2 text-purple-100">
-                <li>• Consider recruiting in Austin/Seattle markets</li>
-                <li>• Focus on candidates with modern JS stack</li>
-                <li>• Senior talent pool is well-balanced</li>
+            <div>
+              <h4 className="font-semibold mb-2">Usage Patterns</h4>
+              <ul className="space-y-1 text-blue-100">
+                <li>• {data.totalSearches} semantic searches performed</li>
+                <li>• Average {data.totalResumes > 0 ? (data.totalSearches / data.totalResumes).toFixed(1) : 0} searches per resume</li>
+                <li>• {data.uploadTrend.reduce((sum, day) => sum + day.count, 0)} uploads in the last week</li>
               </ul>
             </div>
           </div>

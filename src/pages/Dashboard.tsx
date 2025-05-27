@@ -1,18 +1,58 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Search, User, FileText, Brain, BarChart3, Plus, Filter } from "lucide-react";
+import { Upload, Search, FileText, BarChart3 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import ResumeUpload from "@/components/ResumeUpload";
 import ResumeList from "@/components/ResumeList";
 import SearchInterface from "@/components/SearchInterface";
 import Analytics from "@/components/Analytics";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
+  const [stats, setStats] = useState({
+    totalResumes: 0,
+    parsedCandidates: 0,
+    recentSearches: 0
+  });
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      fetchStats();
+    }
+  }, [user]);
+
+  const fetchStats = async () => {
+    try {
+      // Get resume count
+      const { data: resumes, error: resumeError } = await supabase
+        .from('resumes')
+        .select('upload_status')
+        .eq('user_id', user?.id);
+
+      if (resumeError) throw resumeError;
+
+      // Get search count
+      const { data: searches, error: searchError } = await supabase
+        .from('search_queries_new')
+        .select('id')
+        .eq('user_id', user?.id);
+
+      if (searchError) throw searchError;
+
+      setStats({
+        totalResumes: resumes?.length || 0,
+        parsedCandidates: resumes?.filter(r => r.upload_status === 'parsed_success').length || 0,
+        recentSearches: searches?.length || 0
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -41,8 +81,10 @@ const Dashboard = () => {
                       <CardTitle className="text-lg text-gray-700">Total Resumes</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-3xl font-bold text-blue-600">0</div>
-                      <p className="text-sm text-gray-500 mt-1">Start by uploading resumes</p>
+                      <div className="text-3xl font-bold text-blue-600">{stats.totalResumes}</div>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {stats.totalResumes === 0 ? 'Start by uploading resumes' : 'In your talent pool'}
+                      </p>
                     </CardContent>
                   </Card>
                   
@@ -51,7 +93,7 @@ const Dashboard = () => {
                       <CardTitle className="text-lg text-gray-700">Parsed Candidates</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-3xl font-bold text-indigo-600">0</div>
+                      <div className="text-3xl font-bold text-indigo-600">{stats.parsedCandidates}</div>
                       <p className="text-sm text-gray-500 mt-1">AI-processed profiles</p>
                     </CardContent>
                   </Card>
@@ -61,7 +103,7 @@ const Dashboard = () => {
                       <CardTitle className="text-lg text-gray-700">Recent Searches</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-3xl font-bold text-green-600">0</div>
+                      <div className="text-3xl font-bold text-green-600">{stats.recentSearches}</div>
                       <p className="text-sm text-gray-500 mt-1">Semantic searches performed</p>
                     </CardContent>
                   </Card>
