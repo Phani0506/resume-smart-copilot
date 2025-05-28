@@ -8,13 +8,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Function to truncate content to fit within token limits
+function truncateContent(content: string, maxTokens = 4000): string {
+  // Rough estimate: 1 token ≈ 4 characters
+  const maxChars = maxTokens * 4;
+  if (content.length <= maxChars) {
+    return content;
+  }
+  
+  // Try to cut at a reasonable point (end of sentence or paragraph)
+  const truncated = content.substring(0, maxChars);
+  const lastSentence = truncated.lastIndexOf('.');
+  const lastNewline = truncated.lastIndexOf('\n');
+  
+  const cutPoint = Math.max(lastSentence, lastNewline);
+  return cutPoint > maxChars * 0.8 ? truncated.substring(0, cutPoint + 1) : truncated;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Parse request body once and store it
     const requestBody = await req.json();
     const { resumeId } = requestBody;
     console.log('Processing resume ID:', resumeId);
@@ -49,11 +65,15 @@ serve(async (req) => {
       throw fileError;
     }
 
-    // Convert file to text (simplified - in production, use proper PDF/DOCX parsers)
-    const fileContent = await fileData.text();
-    console.log('File content length:', fileContent.length);
+    // Convert file to text
+    const fullContent = await fileData.text();
+    console.log('Original file content length:', fullContent.length);
+    
+    // Truncate content to fit within token limits
+    const fileContent = truncateContent(fullContent);
+    console.log('Truncated file content length:', fileContent.length);
 
-    // Call Groq API for parsing
+    // Call Groq API for parsing with shorter, more focused prompt
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -65,60 +85,42 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a resume parsing expert. Parse the following resume text and extract comprehensive, structured information. Return ONLY valid JSON without any markdown formatting or extra text.'
+            content: 'Extract key information from this resume. Return only valid JSON with no markdown formatting.'
           },
           {
             role: 'user',
-            content: `Parse the following resume text and extract structured information as JSON:
+            content: `Parse this resume and extract the following information as JSON:
 
 ${fileContent}
 
-Extract and return as JSON object with these fields:
+Return JSON with these exact fields:
 {
-  "full_name": "string",
-  "email": "string",
-  "phone_number": "string",
-  "linkedin_url": "string",
-  "location": "string",
-  "professional_summary": "string",
-  "work_experience": [
-    {
-      "job_title": "string",
-      "company_name": "string",
-      "start_date": "string",
-      "end_date": "string",
-      "responsibilities": "string"
-    }
-  ],
-  "education": [
-    {
-      "degree": "string",
-      "institution_name": "string",
-      "graduation_date": "string"
-    }
-  ],
-  "skills": ["string"],
-  "projects": [
-    {
-      "project_name": "string",
-      "description": "string",
-      "technologies_used": ["string"]
-    }
-  ]
+  "full_name": "candidate name",
+  "email": "email address", 
+  "phone_number": "phone number",
+  "linkedin_url": "linkedin profile",
+  "location": "location/address",
+  "professional_summary": "brief summary",
+  "work_experience": [{"job_title": "", "company_name": "", "start_date": "", "end_date": "", "responsibilities": ""}],
+  "education": [{"degree": "", "institution_name": "", "graduation_date": ""}],
+  "skills": ["skill1", "skill2"],
+  "projects": [{"project_name": "", "description": "", "technologies_used": []}]
 }`
           }
         ],
         temperature: 0.1,
+        max_tokens: 1500,
       }),
     });
 
     if (!groqResponse.ok) {
-      console.error('Groq API error:', groqResponse.status, await groqResponse.text());
-      throw new Error(`Groq API error: ${groqResponse.status}`);
+      const errorText = await groqResponse.text();
+      console.error('Groq API error:', groqResponse.status, errorText);
+      throw new Error(`Groq API error: ${groqResponse.status} - ${errorText}`);
     }
 
     const groqData = await groqResponse.json();
-    console.log('Groq response received');
+    console.log('Groq response received successfully');
 
     // Check if response has the expected structure
     if (!groqData.choices || !groqData.choices[0] || !groqData.choices[0].message) {
@@ -127,23 +129,46 @@ Extract and return as JSON object with these fields:
     }
 
     const parsedDataText = groqData.choices[0].message.content;
-    console.log('Raw AI response:', parsedDataText);
+    console.log('Raw AI response length:', parsedDataText.length);
     
     // Clean up the response and parse JSON
     let parsedData;
     try {
-      // Remove any markdown formatting
-      const cleanedText = parsedDataText.replace(/```json\n?|\n?```/g, '').trim();
+      // Remove any markdown formatting and clean up
+      const cleanedText = parsedDataText
+        .replace(/```json\n?|\n?```/g, '')
+        .replace(/```\n?|\n?```/g, '')
+        .trim();
+      
       parsedData = JSON.parse(cleanedText);
       console.log('Successfully parsed JSON data');
+      
+      // Validate that we have at least a name
+      if (!parsedData.full_name) {
+        parsedData.full_name = 'Unknown Candidate';
+      }
+      
     } catch (parseError) {
       console.error('JSON parsing error:', parseError);
       console.error('Failed to parse text:', parsedDataText);
-      throw new Error('Failed to parse AI response as JSON');
+      
+      // Fallback: create basic structure with available info
+      parsedData = {
+        full_name: 'Unknown Candidate',
+        email: '',
+        phone_number: '',
+        linkedin_url: '',
+        location: '',
+        professional_summary: 'Resume parsing encountered an issue',
+        work_experience: [],
+        education: [],
+        skills: [],
+        projects: []
+      };
     }
 
     // Extract skills for quick access
-    const skillsExtracted = parsedData.skills || [];
+    const skillsExtracted = Array.isArray(parsedData.skills) ? parsedData.skills : [];
 
     // Update resume with parsed data
     const { error: updateError } = await supabase
@@ -162,7 +187,11 @@ Extract and return as JSON object with these fields:
 
     console.log('Resume parsing completed successfully');
 
-    return new Response(JSON.stringify({ success: true, parsedData }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      parsedData,
+      message: 'Resume parsed successfully' 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
@@ -175,8 +204,7 @@ Extract and return as JSON object with these fields:
       const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseKey);
       
-      // Parse request body again for error handling
-      const { resumeId } = await req.clone().json();
+      const { resumeId } = requestBody;
       await supabase
         .from('resumes')
         .update({ upload_status: 'parsing_error' })
@@ -185,7 +213,10 @@ Extract and return as JSON object with these fields:
       console.error('Failed to update error status:', updateError);
     }
 
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      details: 'Resume parsing failed. Please try uploading again.' 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
