@@ -1,8 +1,7 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload, FileText, AlertCircle, CheckCircle } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,6 +11,7 @@ interface UploadedFile {
   size: string;
   status: 'uploading' | 'uploaded' | 'parsing' | 'parsed' | 'error';
   id?: string;
+  errorMessage?: string;
 }
 
 const ResumeUpload = () => {
@@ -112,12 +112,20 @@ const ResumeUpload = () => {
         )
       );
 
-      // Call parsing edge function
+      // Call parsing edge function with better error handling
       const { data: parseResult, error: parseError } = await supabase.functions.invoke('parse-resume', {
         body: { resumeId: resumeData.id }
       });
 
-      if (parseError) throw parseError;
+      if (parseError) {
+        console.error('Parse function error:', parseError);
+        throw new Error(`Parsing failed: ${parseError.message}`);
+      }
+
+      if (parseResult?.error) {
+        console.error('Parse result error:', parseResult.error);
+        throw new Error(`Parsing failed: ${parseResult.error}`);
+      }
 
       setUploadedFiles(prev => 
         prev.map(f => 
@@ -127,20 +135,22 @@ const ResumeUpload = () => {
 
       toast({
         title: "Resume processed successfully",
-        description: `${file.name} has been uploaded and parsed.`,
+        description: `${file.name} has been uploaded and parsed. ${parseResult?.skillsCount || 0} skills extracted.`,
       });
 
     } catch (error) {
       console.error('Upload error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
       setUploadedFiles(prev => 
         prev.map(f => 
-          f.name === file.name ? { ...f, status: 'error' } : f
+          f.name === file.name ? { ...f, status: 'error', errorMessage } : f
         )
       );
       
       toast({
         title: "Upload failed",
-        description: "There was an error uploading your resume. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -151,7 +161,7 @@ const ResumeUpload = () => {
       case 'uploading':
         return <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />;
       case 'uploaded':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return <CheckCircle className="h-4 w-4 text-blue-600" />;
       case 'parsing':
         return <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin" />;
       case 'parsed':
@@ -163,18 +173,18 @@ const ResumeUpload = () => {
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string, errorMessage?: string) => {
     switch (status) {
       case 'uploading':
         return 'Uploading...';
       case 'uploaded':
-        return 'Uploaded';
+        return 'Uploaded - Ready for AI parsing';
       case 'parsing':
-        return 'AI Parsing...';
+        return 'AI Parsing in progress...';
       case 'parsed':
-        return 'Ready';
+        return 'Ready for search';
       case 'error':
-        return 'Error';
+        return `Error: ${errorMessage || 'Upload failed'}`;
       default:
         return '';
     }
@@ -257,7 +267,7 @@ const ResumeUpload = () => {
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(file.status)}
                     <span className="text-sm font-medium text-gray-700">
-                      {getStatusText(file.status)}
+                      {getStatusText(file.status, file.errorMessage)}
                     </span>
                   </div>
                 </div>

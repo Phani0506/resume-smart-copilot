@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 // Function to truncate content to fit within token limits
-function truncateContent(content: string, maxTokens = 4000): string {
+function truncateContent(content: string, maxTokens = 3000): string {
   // Rough estimate: 1 token ≈ 4 characters
   const maxChars = maxTokens * 4;
   if (content.length <= maxChars) {
@@ -22,7 +22,7 @@ function truncateContent(content: string, maxTokens = 4000): string {
   const lastNewline = truncated.lastIndexOf('\n');
   
   const cutPoint = Math.max(lastSentence, lastNewline);
-  return cutPoint > maxChars * 0.8 ? truncated.substring(0, cutPoint + 1) : truncated;
+  return cutPoint > maxChars * 0.7 ? truncated.substring(0, cutPoint + 1) : truncated;
 }
 
 serve(async (req) => {
@@ -30,14 +30,21 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let requestBody;
+  let resumeId;
+
   try {
-    const requestBody = await req.json();
-    const { resumeId } = requestBody;
+    requestBody = await req.json();
+    resumeId = requestBody.resumeId;
     console.log('Processing resume ID:', resumeId);
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const groqApiKey = Deno.env.get('GROQ_API_KEY')!;
+    
+    if (!groqApiKey) {
+      throw new Error('GROQ_API_KEY is not configured');
+    }
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -50,10 +57,10 @@ serve(async (req) => {
 
     if (resumeError) {
       console.error('Resume fetch error:', resumeError);
-      throw resumeError;
+      throw new Error(`Resume not found: ${resumeError.message}`);
     }
 
-    console.log('Resume found:', resume.file_name);
+    console.log('Resume found:', resume.file_name, 'Status:', resume.upload_status);
 
     // Download file from storage
     const { data: fileData, error: fileError } = await supabase.storage
@@ -62,7 +69,7 @@ serve(async (req) => {
 
     if (fileError) {
       console.error('File download error:', fileError);
-      throw fileError;
+      throw new Error(`File download failed: ${fileError.message}`);
     }
 
     // Convert file to text
@@ -70,10 +77,10 @@ serve(async (req) => {
     console.log('Original file content length:', fullContent.length);
     
     // Truncate content to fit within token limits
-    const fileContent = truncateContent(fullContent);
+    const fileContent = truncateContent(fullContent, 2500);
     console.log('Truncated file content length:', fileContent.length);
 
-    // Call Groq API for parsing with shorter, more focused prompt
+    // Call Groq API for parsing with optimized prompt
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -85,22 +92,22 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'Extract key information from this resume. Return only valid JSON with no markdown formatting.'
+            content: 'You are a resume parser. Extract information from resumes and return ONLY valid JSON. Do not include any markdown formatting or explanations.'
           },
           {
             role: 'user',
-            content: `Parse this resume and extract the following information as JSON:
+            content: `Extract information from this resume text and return as JSON:
 
 ${fileContent}
 
-Return JSON with these exact fields:
+Return JSON with these fields (use empty string or empty array if not found):
 {
-  "full_name": "candidate name",
-  "email": "email address", 
-  "phone_number": "phone number",
-  "linkedin_url": "linkedin profile",
-  "location": "location/address",
-  "professional_summary": "brief summary",
+  "full_name": "",
+  "email": "",
+  "phone_number": "",
+  "linkedin_url": "",
+  "location": "",
+  "professional_summary": "",
   "work_experience": [{"job_title": "", "company_name": "", "start_date": "", "end_date": "", "responsibilities": ""}],
   "education": [{"degree": "", "institution_name": "", "graduation_date": ""}],
   "skills": ["skill1", "skill2"],
@@ -109,57 +116,77 @@ Return JSON with these exact fields:
           }
         ],
         temperature: 0.1,
-        max_tokens: 1500,
+        max_tokens: 2000,
       }),
     });
 
     if (!groqResponse.ok) {
       const errorText = await groqResponse.text();
       console.error('Groq API error:', groqResponse.status, errorText);
-      throw new Error(`Groq API error: ${groqResponse.status} - ${errorText}`);
+      throw new Error(`Groq API failed: ${groqResponse.status} - ${errorText}`);
     }
 
     const groqData = await groqResponse.json();
-    console.log('Groq response received successfully');
+    console.log('Groq response received, choices length:', groqData.choices?.length);
 
     // Check if response has the expected structure
     if (!groqData.choices || !groqData.choices[0] || !groqData.choices[0].message) {
-      console.error('Unexpected Groq response structure:', groqData);
-      throw new Error('Invalid response from AI service');
+      console.error('Unexpected Groq response structure:', JSON.stringify(groqData));
+      throw new Error('Invalid response structure from AI service');
     }
 
     const parsedDataText = groqData.choices[0].message.content;
-    console.log('Raw AI response length:', parsedDataText.length);
+    console.log('Raw AI response:', parsedDataText.substring(0, 200) + '...');
     
     // Clean up the response and parse JSON
     let parsedData;
     try {
       // Remove any markdown formatting and clean up
-      const cleanedText = parsedDataText
-        .replace(/```json\n?|\n?```/g, '')
-        .replace(/```\n?|\n?```/g, '')
-        .trim();
+      let cleanedText = parsedDataText.trim();
+      
+      // Remove markdown code blocks
+      cleanedText = cleanedText.replace(/```json\s*|\s*```/g, '');
+      cleanedText = cleanedText.replace(/```\s*|\s*```/g, '');
+      
+      // Find JSON object in the text
+      const jsonStart = cleanedText.indexOf('{');
+      const jsonEnd = cleanedText.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        cleanedText = cleanedText.substring(jsonStart, jsonEnd + 1);
+      }
+      
+      console.log('Cleaned JSON text:', cleanedText.substring(0, 200) + '...');
       
       parsedData = JSON.parse(cleanedText);
       console.log('Successfully parsed JSON data');
       
-      // Validate that we have at least a name
-      if (!parsedData.full_name) {
-        parsedData.full_name = 'Unknown Candidate';
-      }
+      // Ensure all required fields exist with defaults
+      parsedData = {
+        full_name: parsedData.full_name || 'Unknown Candidate',
+        email: parsedData.email || '',
+        phone_number: parsedData.phone_number || '',
+        linkedin_url: parsedData.linkedin_url || '',
+        location: parsedData.location || '',
+        professional_summary: parsedData.professional_summary || '',
+        work_experience: Array.isArray(parsedData.work_experience) ? parsedData.work_experience : [],
+        education: Array.isArray(parsedData.education) ? parsedData.education : [],
+        skills: Array.isArray(parsedData.skills) ? parsedData.skills : [],
+        projects: Array.isArray(parsedData.projects) ? parsedData.projects : []
+      };
       
     } catch (parseError) {
       console.error('JSON parsing error:', parseError);
-      console.error('Failed to parse text:', parsedDataText);
+      console.error('Failed to parse text (first 500 chars):', parsedDataText.substring(0, 500));
       
-      // Fallback: create basic structure with available info
+      // Create fallback data structure
       parsedData = {
-        full_name: 'Unknown Candidate',
+        full_name: 'Parsing Error - Manual Review Needed',
         email: '',
         phone_number: '',
         linkedin_url: '',
         location: '',
-        professional_summary: 'Resume parsing encountered an issue',
+        professional_summary: 'Resume content could not be parsed automatically',
         work_experience: [],
         education: [],
         skills: [],
@@ -168,7 +195,8 @@ Return JSON with these exact fields:
     }
 
     // Extract skills for quick access
-    const skillsExtracted = Array.isArray(parsedData.skills) ? parsedData.skills : [];
+    const skillsExtracted = parsedData.skills || [];
+    console.log('Extracted skills:', skillsExtracted);
 
     // Update resume with parsed data
     const { error: updateError } = await supabase
@@ -181,15 +209,16 @@ Return JSON with these exact fields:
       .eq('id', resumeId);
 
     if (updateError) {
-      console.error('Update error:', updateError);
-      throw updateError;
+      console.error('Database update error:', updateError);
+      throw new Error(`Failed to save parsed data: ${updateError.message}`);
     }
 
-    console.log('Resume parsing completed successfully');
+    console.log('Resume parsing completed successfully for:', parsedData.full_name);
 
     return new Response(JSON.stringify({ 
       success: true, 
       parsedData,
+      skillsCount: skillsExtracted.length,
       message: 'Resume parsed successfully' 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -198,24 +227,26 @@ Return JSON with these exact fields:
   } catch (error) {
     console.error('Parse resume error:', error);
     
-    // Update status to error
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      const { resumeId } = requestBody;
-      await supabase
-        .from('resumes')
-        .update({ upload_status: 'parsing_error' })
-        .eq('id', resumeId);
-    } catch (updateError) {
-      console.error('Failed to update error status:', updateError);
+    // Update status to error if we have resumeId
+    if (resumeId) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        await supabase
+          .from('resumes')
+          .update({ upload_status: 'parsing_error' })
+          .eq('id', resumeId);
+      } catch (updateError) {
+        console.error('Failed to update error status:', updateError);
+      }
     }
 
     return new Response(JSON.stringify({ 
       error: error.message,
-      details: 'Resume parsing failed. Please try uploading again.' 
+      details: 'Resume parsing failed. Please check the file format and try again.',
+      resumeId: resumeId
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
