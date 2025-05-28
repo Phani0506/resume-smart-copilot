@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, MapPin, Star, Calendar, Clock } from "lucide-react";
+import { Search, MapPin, Star, Calendar, Clock, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import OutreachModal from "./OutreachModal";
 
 interface SearchResult {
   resume_id: string;
@@ -21,6 +22,8 @@ const SearchInterface = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [outreachModalOpen, setOutreachModalOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -58,7 +61,6 @@ const SearchInterface = () => {
 
     setSearching(true);
     try {
-      // Call semantic search edge function
       const { data, error } = await supabase.functions.invoke('semantic-search', {
         body: { 
           query: searchQuery,
@@ -70,7 +72,6 @@ const SearchInterface = () => {
 
       setSearchResults(data.results || []);
 
-      // Save search query
       await supabase
         .from('search_queries_new')
         .insert({
@@ -104,6 +105,16 @@ const SearchInterface = () => {
     if (e.key === 'Enter') {
       handleSearch();
     }
+  };
+
+  const openOutreachModal = (result: SearchResult) => {
+    const resumeData = {
+      id: result.resume_id,
+      file_name: result.candidate_data?.full_name || 'Unknown Candidate',
+      parsed_data: result.candidate_data
+    };
+    setSelectedCandidate(resumeData);
+    setOutreachModalOpen(true);
   };
 
   return (
@@ -244,7 +255,12 @@ const SearchInterface = () => {
                         <Button size="sm" variant="outline">
                           View Full Profile
                         </Button>
-                        <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                        <Button 
+                          size="sm" 
+                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                          onClick={() => openOutreachModal(result)}
+                        >
+                          <Mail className="h-4 w-4 mr-2" />
                           Contact Candidate
                         </Button>
                       </div>
@@ -277,6 +293,13 @@ const SearchInterface = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Outreach Modal */}
+      <OutreachModal 
+        open={outreachModalOpen}
+        onOpenChange={setOutreachModalOpen}
+        resume={selectedCandidate}
+      />
     </div>
   );
 };

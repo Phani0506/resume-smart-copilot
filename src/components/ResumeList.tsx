@@ -15,11 +15,29 @@ import {
   Calendar,
   MapPin,
   Mail,
-  Phone
+  Phone,
+  Trash2
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import OutreachModal from "./OutreachModal";
 
 interface Resume {
   id: string;
@@ -34,6 +52,10 @@ const ResumeList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resumeToDelete, setResumeToDelete] = useState<Resume | null>(null);
+  const [outreachModalOpen, setOutreachModalOpen] = useState(false);
+  const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -62,6 +84,46 @@ const ResumeList = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    if (!resumeToDelete) return;
+
+    try {
+      // Delete file from storage
+      const { error: storageError } = await supabase.storage
+        .from('user-resumes')
+        .remove([resumeToDelete.storage_path]);
+
+      if (storageError) {
+        console.error('Storage deletion error:', storageError);
+      }
+
+      // Delete record from database
+      const { error: dbError } = await supabase
+        .from('resumes')
+        .delete()
+        .eq('id', resumeToDelete.id);
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: 'Success',
+        description: 'Resume deleted successfully.',
+      });
+
+      fetchResumes();
+    } catch (error) {
+      console.error('Error deleting resume:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete resume.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setResumeToDelete(null);
     }
   };
 
@@ -97,7 +159,6 @@ const ResumeList = () => {
 
       if (error) throw error;
 
-      // You can display the questions in a modal or new component
       console.log('Generated questions:', data.questions);
       toast({
         title: 'Questions Generated',
@@ -113,37 +174,9 @@ const ResumeList = () => {
     }
   };
 
-  const generateOutreach = async (resume: Resume) => {
-    if (!resume.parsed_data) {
-      toast({
-        title: 'Unable to generate outreach',
-        description: 'Resume data not available.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-outreach', {
-        body: { resumeData: resume.parsed_data }
-      });
-
-      if (error) throw error;
-
-      // You can display the outreach message in a modal or new component
-      console.log('Generated outreach:', data.message);
-      toast({
-        title: 'Outreach Generated',
-        description: 'Personalized outreach message has been generated.',
-      });
-    } catch (error) {
-      console.error('Error generating outreach:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate outreach message.',
-        variant: 'destructive',
-      });
-    }
+  const openOutreachModal = (resume: Resume) => {
+    setSelectedResume(resume);
+    setOutreachModalOpen(true);
   };
 
   if (loading) {
@@ -225,9 +258,25 @@ const ResumeList = () => {
                     </div>
                     <div className="flex items-center space-x-2">
                       {getStatusBadge(resume.upload_status)}
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setResumeToDelete(resume);
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Resume
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                   
@@ -274,7 +323,7 @@ const ResumeList = () => {
                       <Button 
                         size="sm" 
                         className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                        onClick={() => generateOutreach(resume)}
+                        onClick={() => openOutreachModal(resume)}
                         disabled={!resume.parsed_data}
                       >
                         <Mail className="h-4 w-4 mr-2" />
@@ -304,6 +353,31 @@ const ResumeList = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Resume</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{resumeToDelete?.file_name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteResume} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Outreach Modal */}
+      <OutreachModal 
+        open={outreachModalOpen}
+        onOpenChange={setOutreachModalOpen}
+        resume={selectedResume}
+      />
     </div>
   );
 };
