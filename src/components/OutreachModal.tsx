@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Copy, Send, Loader2 } from "lucide-react";
+import { Mail, Copy, Send, Loader2, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -97,12 +96,96 @@ const OutreachModal = ({ open, onOpenChange, resume }: OutreachModalProps) => {
   };
 
   const openEmailClient = () => {
-    const subject = `Opportunity at ${companyName || 'Our Company'}`;
-    const body = encodeURIComponent(outreachMessage);
+    const candidateName = resume?.parsed_data?.full_name || 'Candidate';
+    const subject = jobTitle && companyName 
+      ? `${jobTitle} Opportunity at ${companyName}` 
+      : `Exciting Opportunity - ${candidateName}`;
+    
     const email = resume?.parsed_data?.email || '';
     
-    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${body}`;
-    window.open(mailtoLink);
+    if (!email) {
+      toast({
+        title: 'No Email Found',
+        description: 'This candidate does not have an email address in their resume.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!outreachMessage.trim()) {
+      toast({
+        title: 'No Message',
+        description: 'Please generate an outreach message first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Create mailto link with proper encoding
+    const body = encodeURIComponent(outreachMessage);
+    const encodedSubject = encodeURIComponent(subject);
+    
+    // Try Gmail web interface first (more reliable)
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodedSubject}&body=${body}`;
+    
+    // Fallback to mailto
+    const mailtoLink = `mailto:${email}?subject=${encodedSubject}&body=${body}`;
+    
+    try {
+      // Try to open Gmail web interface
+      const newWindow = window.open(gmailUrl, '_blank');
+      
+      if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
+        // Fallback to mailto if popup blocked
+        window.location.href = mailtoLink;
+      } else {
+        toast({
+          title: 'Email Client Opened',
+          description: 'Gmail has been opened with your outreach message.',
+        });
+      }
+    } catch (error) {
+      // Final fallback
+      window.location.href = mailtoLink;
+    }
+  };
+
+  const openGmailDirect = () => {
+    const candidateName = resume?.parsed_data?.full_name || 'Candidate';
+    const subject = jobTitle && companyName 
+      ? `${jobTitle} Opportunity at ${companyName}` 
+      : `Exciting Opportunity - ${candidateName}`;
+    
+    const email = resume?.parsed_data?.email || '';
+    
+    if (!email) {
+      toast({
+        title: 'No Email Found',
+        description: 'This candidate does not have an email address in their resume.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!outreachMessage.trim()) {
+      toast({
+        title: 'No Message',
+        description: 'Please generate an outreach message first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const body = encodeURIComponent(outreachMessage);
+    const encodedSubject = encodeURIComponent(subject);
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodedSubject}&body=${body}`;
+    
+    window.open(gmailUrl, '_blank');
+    
+    toast({
+      title: 'Gmail Opened',
+      description: 'Gmail has been opened in a new tab with your outreach message.',
+    });
   };
 
   const handleClose = () => {
@@ -209,20 +292,36 @@ const OutreachModal = ({ open, onOpenChange, resume }: OutreachModalProps) => {
                 placeholder="Your personalized outreach message will appear here..."
               />
               
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={copyToClipboard}>
                   <Copy className="h-4 w-4 mr-2" />
                   Copy to Clipboard
                 </Button>
+                
+                <Button 
+                  onClick={openGmailDirect}
+                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+                  disabled={!resume.parsed_data?.email || !outreachMessage.trim()}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in Gmail
+                </Button>
+                
                 <Button 
                   onClick={openEmailClient}
                   className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-                  disabled={!resume.parsed_data?.email}
+                  disabled={!resume.parsed_data?.email || !outreachMessage.trim()}
                 >
                   <Send className="h-4 w-4 mr-2" />
                   Open in Email Client
                 </Button>
               </div>
+              
+              {resume.parsed_data?.email && (
+                <p className="text-sm text-gray-600">
+                  Email will be sent to: <span className="font-medium">{resume.parsed_data.email}</span>
+                </p>
+              )}
             </div>
           )}
         </div>
