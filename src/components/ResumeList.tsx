@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import OutreachModal from "./OutreachModal";
+import ScreeningQuestionsModal from "./ScreeningQuestionsModal";
 
 interface Resume {
   id: string;
@@ -48,6 +48,12 @@ interface Resume {
   created_at: string;
 }
 
+interface Question {
+  category: string;
+  question: string;
+  purpose: string;
+}
+
 const ResumeList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [resumes, setResumes] = useState<Resume[]>([]);
@@ -55,7 +61,10 @@ const ResumeList = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [resumeToDelete, setResumeToDelete] = useState<Resume | null>(null);
   const [outreachModalOpen, setOutreachModalOpen] = useState(false);
+  const [questionsModalOpen, setQuestionsModalOpen] = useState(false);
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
+  const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -91,7 +100,6 @@ const ResumeList = () => {
     if (!resumeToDelete) return;
 
     try {
-      // Delete file from storage
       const { error: storageError } = await supabase.storage
         .from('user-resumes')
         .remove([resumeToDelete.storage_path]);
@@ -100,7 +108,6 @@ const ResumeList = () => {
         console.error('Storage deletion error:', storageError);
       }
 
-      // Delete record from database
       const { error: dbError } = await supabase
         .from('resumes')
         .delete()
@@ -152,6 +159,11 @@ const ResumeList = () => {
       return;
     }
 
+    setSelectedResume(resume);
+    setQuestionsLoading(true);
+    setQuestionsModalOpen(true);
+    setGeneratedQuestions([]);
+
     try {
       const { data, error } = await supabase.functions.invoke('generate-screening-questions', {
         body: { resumeData: resume.parsed_data }
@@ -160,6 +172,8 @@ const ResumeList = () => {
       if (error) throw error;
 
       console.log('Generated questions:', data.questions);
+      setGeneratedQuestions(data.questions || []);
+      
       toast({
         title: 'Questions Generated',
         description: 'Screening questions have been generated successfully.',
@@ -171,6 +185,9 @@ const ResumeList = () => {
         description: 'Failed to generate screening questions.',
         variant: 'destructive',
       });
+      setGeneratedQuestions([]);
+    } finally {
+      setQuestionsLoading(false);
     }
   };
 
@@ -199,7 +216,6 @@ const ResumeList = () => {
         </p>
       </div>
 
-      {/* Search and Filters */}
       <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
@@ -338,7 +354,6 @@ const ResumeList = () => {
         ))}
       </div>
 
-      {/* Empty State */}
       {resumes.length === 0 && (
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardContent className="py-16 text-center">
@@ -354,7 +369,6 @@ const ResumeList = () => {
         </Card>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -372,11 +386,18 @@ const ResumeList = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Outreach Modal */}
       <OutreachModal 
         open={outreachModalOpen}
         onOpenChange={setOutreachModalOpen}
         resume={selectedResume}
+      />
+
+      <ScreeningQuestionsModal
+        open={questionsModalOpen}
+        onOpenChange={setQuestionsModalOpen}
+        questions={generatedQuestions}
+        candidateName={selectedResume?.parsed_data?.full_name || 'Candidate'}
+        loading={questionsLoading}
       />
     </div>
   );
