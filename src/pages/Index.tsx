@@ -73,16 +73,13 @@ const Index = () => {
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
             Transform your talent acquisition process with intelligent resume parsing, semantic search, and AI-generated insights. Find the perfect candidates faster than ever before.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <div className="flex justify-center">
             <Button 
               size="lg" 
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-8 py-3 text-lg"
               onClick={() => navigate('/auth')}
             >
               Start Free Trial
-            </Button>
-            <Button variant="outline" size="lg" className="px-8 py-3 text-lg">
-              Watch Demo
             </Button>
           </div>
         </div>

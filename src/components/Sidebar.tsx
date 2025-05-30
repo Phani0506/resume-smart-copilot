@@ -84,11 +84,29 @@ const Sidebar = ({ activeTab, setActiveTab }: SidebarProps) => {
 
       {/* Bottom section */}
       <div className="absolute bottom-4 left-4 right-4 space-y-2">
-        <Button variant="ghost" className="w-full justify-start text-gray-600 hover:text-gray-900">
+        <Button 
+          variant={activeTab === "profile" ? "default" : "ghost"}
+          className={cn(
+            "w-full justify-start",
+            activeTab === "profile"
+              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+          )}
+          onClick={() => setActiveTab("profile")}
+        >
           <User className="h-4 w-4 mr-3" />
           Profile
         </Button>
-        <Button variant="ghost" className="w-full justify-start text-gray-600 hover:text-gray-900">
+        <Button 
+          variant={activeTab === "settings" ? "default" : "ghost"}
+          className={cn(
+            "w-full justify-start",
+            activeTab === "settings"
+              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+          )}
+          onClick={() => setActiveTab("settings")}
+        >
           <Settings className="h-4 w-4 mr-3" />
           Settings
         </Button>
