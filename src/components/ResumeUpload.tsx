@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,14 +40,36 @@ const ResumeUpload = () => {
     handleFiles(files);
   };
 
+  const isValidFileType = (file: File) => {
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword', // .doc files
+      'text/plain' // .txt files for testing
+    ];
+    
+    const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    return validTypes.includes(file.type) || validExtensions.includes(fileExtension);
+  };
+
   const handleFiles = (files: FileList) => {
     Array.from(files).forEach(file => {
-      if (file.type === 'application/pdf' || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      if (isValidFileType(file)) {
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+          toast({
+            title: "File too large",
+            description: `${file.name} is larger than 10MB. Please upload a smaller file.`,
+            variant: "destructive",
+          });
+          return;
+        }
         uploadFile(file);
       } else {
         toast({
           title: "Invalid file type",
-          description: "Please upload only PDF or DOCX files.",
+          description: `${file.name} is not supported. Please upload PDF, DOCX, or DOC files.`,
           variant: "destructive",
         });
       }
@@ -72,17 +95,27 @@ const ResumeUpload = () => {
     setUploadedFiles(prev => [...prev, fileData]);
 
     try {
-      // Create unique filename
-      const fileExt = file.name.split('.').pop();
+      // Create unique filename with proper extension
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
+
+      console.log('Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size);
 
       // Upload to Supabase Storage
       const { data: storageData, error: storageError } = await supabase.storage
         .from('user-resumes')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (storageError) throw storageError;
+      if (storageError) {
+        console.error('Storage error:', storageError);
+        throw storageError;
+      }
+
+      console.log('File uploaded to storage:', storageData);
 
       // Insert record to database
       const { data: resumeData, error: dbError } = await supabase
@@ -91,13 +124,18 @@ const ResumeUpload = () => {
           user_id: user.id,
           file_name: file.name,
           storage_path: filePath,
-          content_type: file.type,
+          content_type: file.type || `application/${fileExt}`,
           upload_status: 'uploaded'
         })
         .select()
         .single();
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw dbError;
+      }
+
+      console.log('Resume record created:', resumeData);
 
       setUploadedFiles(prev => 
         prev.map(f => 
@@ -105,26 +143,38 @@ const ResumeUpload = () => {
         )
       );
 
-      // Start parsing
+      // Start parsing with retry logic
       setUploadedFiles(prev => 
         prev.map(f => 
           f.name === file.name ? { ...f, status: 'parsing' } : f
         )
       );
 
-      // Call parsing edge function with better error handling
+      // Add delay before parsing to ensure file is fully uploaded
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      console.log('Starting AI parsing for resume:', resumeData.id);
+
+      // Call parsing edge function with improved error handling
       const { data: parseResult, error: parseError } = await supabase.functions.invoke('parse-resume', {
         body: { resumeId: resumeData.id }
       });
 
+      console.log('Parse result:', parseResult, 'Parse error:', parseError);
+
       if (parseError) {
         console.error('Parse function error:', parseError);
-        throw new Error(`Parsing failed: ${parseError.message}`);
+        throw new Error(`AI parsing failed: ${parseError.message}`);
       }
 
       if (parseResult?.error) {
         console.error('Parse result error:', parseResult.error);
-        throw new Error(`Parsing failed: ${parseResult.error}`);
+        throw new Error(`AI parsing failed: ${parseResult.error}`);
+      }
+
+      // Check if parsing was actually successful
+      if (!parseResult?.success) {
+        throw new Error('AI parsing completed but no data was extracted');
       }
 
       setUploadedFiles(prev => 
@@ -176,11 +226,11 @@ const ResumeUpload = () => {
   const getStatusText = (status: string, errorMessage?: string) => {
     switch (status) {
       case 'uploading':
-        return 'Uploading...';
+        return 'Uploading to secure storage...';
       case 'uploaded':
-        return 'Uploaded - Ready for AI parsing';
+        return 'Uploaded - Preparing for AI parsing';
       case 'parsing':
-        return 'AI Parsing in progress...';
+        return 'AI extracting candidate information...';
       case 'parsed':
         return 'Ready for search';
       case 'error':
@@ -195,7 +245,7 @@ const ResumeUpload = () => {
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Resumes</h1>
         <p className="text-gray-600">
-          Upload candidate resumes to automatically extract and analyze information with AI.
+          Upload candidate resumes (PDF, DOCX, DOC formats) to automatically extract and analyze information with AI.
         </p>
       </div>
 
@@ -204,7 +254,7 @@ const ResumeUpload = () => {
         <CardHeader>
           <CardTitle>Upload Resume Files</CardTitle>
           <CardDescription>
-            Drag and drop PDF or DOCX files, or click to browse. Files will be automatically processed with AI.
+            Drag and drop PDF, DOCX, or DOC files, or click to browse. Files will be automatically processed with AI. Maximum file size: 10MB.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -224,7 +274,7 @@ const ResumeUpload = () => {
               Drop resume files here
             </h3>
             <p className="text-gray-600 mb-4">
-              Supports PDF and DOCX files up to 10MB each
+              Supports PDF, DOCX, and DOC files up to 10MB each
             </p>
             <Button 
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
@@ -236,7 +286,7 @@ const ResumeUpload = () => {
               id="file-input"
               type="file"
               multiple
-              accept=".pdf,.docx"
+              accept=".pdf,.docx,.doc"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
               className="hidden"
             />
@@ -299,7 +349,7 @@ const ResumeUpload = () => {
               </div>
               <div>
                 <p className="font-medium">AI Processing</p>
-                <p className="text-blue-100 text-sm">Advanced AI extracts structured data from each resume</p>
+                <p className="text-blue-100 text-sm">Advanced AI extracts structured data from each resume including name, skills, experience, and education</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
