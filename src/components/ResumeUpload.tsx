@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,19 +42,23 @@ const ResumeUpload = () => {
   const isValidFileType = (file: File) => {
     const validTypes = [
       'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/msword', // .doc files
-      'text/plain' // .txt files for testing
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/msword', // .doc
+      'text/plain' // .txt for testing
     ];
     
     const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    console.log('Checking file:', file.name, 'Type:', file.type, 'Extension:', fileExtension);
     
     return validTypes.includes(file.type) || validExtensions.includes(fileExtension);
   };
 
   const handleFiles = (files: FileList) => {
     Array.from(files).forEach(file => {
+      console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
+      
       if (isValidFileType(file)) {
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
           toast({
@@ -69,7 +72,7 @@ const ResumeUpload = () => {
       } else {
         toast({
           title: "Invalid file type",
-          description: `${file.name} is not supported. Please upload PDF, DOCX, or DOC files.`,
+          description: `${file.name} is not supported. Please upload PDF, DOCX, DOC, or TXT files.`,
           variant: "destructive",
         });
       }
@@ -100,14 +103,37 @@ const ResumeUpload = () => {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size);
+      console.log('Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size, 'Path:', filePath);
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage with proper content type detection
+      let contentType = file.type;
+      if (!contentType || contentType === 'application/octet-stream') {
+        // Fallback content type detection based on extension
+        const ext = fileExt.toLowerCase();
+        switch (ext) {
+          case 'pdf':
+            contentType = 'application/pdf';
+            break;
+          case 'docx':
+            contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            break;
+          case 'doc':
+            contentType = 'application/msword';
+            break;
+          case 'txt':
+            contentType = 'text/plain';
+            break;
+          default:
+            contentType = 'application/octet-stream';
+        }
+      }
+
       const { data: storageData, error: storageError } = await supabase.storage
         .from('user-resumes')
         .upload(filePath, file, {
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
+          contentType: contentType
         });
 
       if (storageError) {
@@ -124,7 +150,7 @@ const ResumeUpload = () => {
           user_id: user.id,
           file_name: file.name,
           storage_path: filePath,
-          content_type: file.type || `application/${fileExt}`,
+          content_type: contentType,
           upload_status: 'uploaded'
         })
         .select()
@@ -143,7 +169,7 @@ const ResumeUpload = () => {
         )
       );
 
-      // Start parsing with retry logic
+      // Start parsing
       setUploadedFiles(prev => 
         prev.map(f => 
           f.name === file.name ? { ...f, status: 'parsing' } : f
@@ -155,7 +181,7 @@ const ResumeUpload = () => {
 
       console.log('Starting AI parsing for resume:', resumeData.id);
 
-      // Call parsing edge function with improved error handling
+      // Call parsing edge function
       const { data: parseResult, error: parseError } = await supabase.functions.invoke('parse-resume', {
         body: { resumeId: resumeData.id }
       });
@@ -172,7 +198,6 @@ const ResumeUpload = () => {
         throw new Error(`AI parsing failed: ${parseResult.error}`);
       }
 
-      // Check if parsing was actually successful
       if (!parseResult?.success) {
         throw new Error('AI parsing completed but no data was extracted');
       }
@@ -286,7 +311,7 @@ const ResumeUpload = () => {
               id="file-input"
               type="file"
               multiple
-              accept=".pdf,.docx,.doc"
+              accept=".pdf,.docx,.doc,.txt"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
               className="hidden"
             />

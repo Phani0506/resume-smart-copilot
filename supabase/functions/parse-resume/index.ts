@@ -8,69 +8,103 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Enhanced function to truncate content while preserving important sections
-function intelligentTruncate(content: string, maxTokens = 3000): string {
-  const maxChars = maxTokens * 4; // Rough estimate: 1 token ≈ 4 characters
+// More aggressive content truncation to stay within token limits
+function intelligentTruncate(content: string, maxTokens = 2000): string {
+  const maxChars = maxTokens * 3.5; // More conservative estimate: 1 token ≈ 3.5 characters
   
   if (content.length <= maxChars) {
     return content;
   }
 
-  // Try to preserve key sections while truncating
-  const sections = content.split(/\n\s*\n/); // Split by paragraphs
+  console.log(`Content too long (${content.length} chars), truncating to ${maxChars} chars`);
+
+  // Clean up PDF artifacts and extract meaningful text
+  let cleanedContent = content
+    .replace(/%PDF-[\d.]+/g, '') // Remove PDF headers
+    .replace(/\d+ \d+ obj/g, '') // Remove PDF object definitions
+    .replace(/<<[^>]*>>/g, '') // Remove PDF dictionaries
+    .replace(/stream[\s\S]*?endstream/g, '') // Remove PDF streams
+    .replace(/endobj/g, '') // Remove endobj markers
+    .replace(/xref[\s\S]*?trailer/g, '') // Remove xref tables
+    .replace(/startxref[\s\S]*?%%EOF/g, '') // Remove PDF endings
+    .replace(/\/[A-Z][a-zA-Z]*/g, '') // Remove PDF commands
+    .replace(/\\\(/g, '(').replace(/\\\)/g, ')') // Fix escaped parentheses
+    .replace(/\\n/g, '\n') // Convert literal \n to actual newlines
+    .replace(/\\t/g, ' ') // Convert literal \t to spaces
+    .replace(/[^\x20-\x7E\n\r]/g, ' ') // Remove non-printable characters except newlines
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+
+  // Split into lines and prioritize important sections
+  const lines = cleanedContent.split(/[\n\r]+/).filter(line => line.trim().length > 2);
+  
+  // Extract sections that likely contain important info
+  const importantLines: string[] = [];
+  const otherLines: string[] = [];
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (
+      // Personal info patterns
+      /@/.test(line) || // Email addresses
+      /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(line) || // Phone numbers
+      /linkedin|github/i.test(line) || // Social profiles
+      
+      // Section headers
+      /^(experience|education|skills|summary|objective|contact|projects|certifications)/i.test(line.trim()) ||
+      /(experience|education|skills|summary|objective|contact|projects|certifications):?\s*$/i.test(line.trim()) ||
+      
+      // Job titles and companies (common patterns)
+      /(developer|engineer|manager|analyst|consultant|designer|coordinator)/i.test(line) ||
+      /(inc\.|llc|corp|ltd|company|technologies|solutions|systems)/i.test(line) ||
+      
+      // Skills (programming languages, tools)
+      /(javascript|python|java|react|node|sql|html|css|aws|azure|docker|kubernetes)/i.test(line) ||
+      
+      // Education keywords
+      /(university|college|bachelor|master|degree|phd|certification)/i.test(line) ||
+      
+      // Dates (years that look like work experience)
+      /\b(19|20)\d{2}\b.*?-.*?\b(19|20)\d{2}\b/.test(line) ||
+      /\b(19|20)\d{2}\b.*?(present|current)/i.test(line)
+    ) {
+      importantLines.push(line);
+    } else {
+      otherLines.push(line);
+    }
+  }
+
+  // Build result prioritizing important content
   let result = '';
   let charCount = 0;
 
-  // Prioritize sections that likely contain important info
-  const prioritySections = sections.filter(section => {
-    const lower = section.toLowerCase();
-    return lower.includes('experience') || 
-           lower.includes('education') || 
-           lower.includes('skills') || 
-           lower.includes('contact') ||
-           lower.includes('email') ||
-           lower.includes('phone') ||
-           lower.includes('name') ||
-           lower.includes('summary') ||
-           lower.includes('objective');
-  });
-
-  // Add priority sections first
-  for (const section of prioritySections) {
-    if (charCount + section.length < maxChars * 0.7) {
-      result += section + '\n\n';
-      charCount += section.length;
+  // Add important lines first
+  for (const line of importantLines) {
+    if (charCount + line.length + 1 < maxChars * 0.8) { // Reserve 20% for other content
+      result += line + '\n';
+      charCount += line.length + 1;
     }
   }
 
-  // Add remaining sections if space allows
-  for (const section of sections) {
-    if (!prioritySections.includes(section) && charCount + section.length < maxChars) {
-      result += section + '\n\n';
-      charCount += section.length;
+  // Add other lines if space allows
+  for (const line of otherLines) {
+    if (charCount + line.length + 1 < maxChars) {
+      result += line + '\n';
+      charCount += line.length + 1;
     }
   }
 
-  return result || content.substring(0, maxChars);
+  return result.trim() || content.substring(0, maxChars);
 }
 
-// Enhanced prompt for better extraction
+// Simplified and more focused extraction prompt
 function createExtractionPrompt(content: string): string {
-  return `You are an expert resume parser. Extract ALL available information from this resume text with high accuracy. 
+  return `Extract resume information from this text. Return ONLY valid JSON with no markdown formatting.
 
-IMPORTANT INSTRUCTIONS:
-1. Extract the candidate's FULL NAME - look carefully in headers, contact sections, or document titles
-2. Find ALL contact information including email, phone, LinkedIn, location
-3. Extract ALL skills mentioned - technical skills, soft skills, programming languages, tools, frameworks
-4. Extract complete work experience with job titles, companies, dates, and responsibilities
-5. Extract education details including degrees, institutions, and graduation dates
-6. If any field is truly not found, use empty string or empty array - DO NOT make up information
-7. Return ONLY valid JSON with no markdown formatting
-
-Resume text to parse:
+Text to parse:
 ${content}
 
-Return JSON in this exact format:
+Return this exact JSON structure:
 {
   "full_name": "",
   "email": "",
@@ -132,43 +166,30 @@ serve(async (req) => {
       throw new Error(`File download failed: ${fileError.message}`);
     }
 
-    // Convert file to text based on content type
+    // Convert file to text
     let fullContent: string;
     try {
-      // For all supported file types, try to extract as text
-      if (resume.content_type?.includes('pdf') || resume.file_name.toLowerCase().endsWith('.pdf')) {
-        console.log('Processing PDF file');
-        fullContent = await fileData.text();
-      } else if (resume.content_type?.includes('wordprocessingml') || 
-                 resume.content_type?.includes('msword') ||
-                 resume.file_name.toLowerCase().endsWith('.docx') ||
-                 resume.file_name.toLowerCase().endsWith('.doc')) {
-        console.log('Processing Word document');
-        fullContent = await fileData.text();
-      } else {
-        console.log('Processing as text file');
-        fullContent = await fileData.text();
-      }
+      fullContent = await fileData.text();
     } catch (textError) {
       console.error('Text extraction error:', textError);
       throw new Error('Failed to extract text from file. The file may be corrupted or in an unsupported format.');
     }
 
     console.log('Original file content length:', fullContent.length);
-    console.log('File content preview (first 500 chars):', fullContent.substring(0, 500));
     
-    if (!fullContent || fullContent.trim().length < 50) {
+    if (!fullContent || fullContent.trim().length < 20) {
       throw new Error('File appears to be empty or contains insufficient text content');
     }
     
-    // Use intelligent truncation to preserve important sections
-    const fileContent = intelligentTruncate(fullContent, 2800);
+    // Use more aggressive truncation to stay within limits
+    const fileContent = intelligentTruncate(fullContent, 1800); // Even more conservative
     console.log('Processed content length:', fileContent.length);
+    console.log('Sample processed content:', fileContent.substring(0, 300));
 
-    // Create enhanced prompt
+    // Create simplified prompt
     const prompt = createExtractionPrompt(fileContent);
 
-    // Call Groq API for parsing with enhanced prompt
+    // Call Groq API with more conservative settings
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -180,7 +201,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert resume parser with 100% accuracy. Extract ALL information from resumes and return ONLY valid JSON. Never include markdown formatting, explanations, or any text outside the JSON object.'
+            content: 'You are a resume parser. Extract information and return ONLY valid JSON. No explanations or markdown.'
           },
           {
             role: 'user',
@@ -188,7 +209,7 @@ serve(async (req) => {
           }
         ],
         temperature: 0.1,
-        max_tokens: 2500,
+        max_tokens: 1500, // Reduced max tokens
         top_p: 0.9,
       }),
     });
@@ -202,7 +223,6 @@ serve(async (req) => {
     const groqData = await groqResponse.json();
     console.log('Groq response received, choices length:', groqData.choices?.length);
 
-    // Check if response has the expected structure
     if (!groqData.choices || !groqData.choices[0] || !groqData.choices[0].message) {
       console.error('Unexpected Groq response structure:', JSON.stringify(groqData));
       throw new Error('Invalid response structure from AI service');
@@ -210,20 +230,19 @@ serve(async (req) => {
 
     const parsedDataText = groqData.choices[0].message.content;
     console.log('Raw AI response length:', parsedDataText.length);
-    console.log('Raw AI response preview:', parsedDataText.substring(0, 300));
+    console.log('Raw AI response:', parsedDataText);
     
-    // Enhanced JSON parsing with better error handling
+    // Enhanced JSON parsing
     let parsedData;
     try {
-      // Clean up the response and parse JSON
       let cleanedText = parsedDataText.trim();
       
-      // Remove various markdown formatting patterns
+      // Remove markdown formatting
       cleanedText = cleanedText.replace(/```json\s*/gi, '');
       cleanedText = cleanedText.replace(/```\s*/gi, '');
       cleanedText = cleanedText.replace(/^json\s*/gi, '');
       
-      // Find the JSON object boundaries
+      // Extract JSON object
       const jsonStart = cleanedText.indexOf('{');
       const jsonEnd = cleanedText.lastIndexOf('}');
       
@@ -231,58 +250,54 @@ serve(async (req) => {
         cleanedText = cleanedText.substring(jsonStart, jsonEnd + 1);
       }
       
-      console.log('Cleaned JSON text preview:', cleanedText.substring(0, 200));
+      console.log('Cleaned JSON text:', cleanedText);
       
-      // Parse the JSON
       parsedData = JSON.parse(cleanedText);
       console.log('Successfully parsed JSON data');
       
-      // Validate and enhance the parsed data
+      // Validate and clean the parsed data
       parsedData = {
-        full_name: (parsedData.full_name || '').trim() || 'Name Not Found',
-        email: (parsedData.email || '').trim(),
-        phone_number: (parsedData.phone_number || '').trim(),
+        full_name: (parsedData.full_name || '').trim() || extractNameFallback(fullContent),
+        email: (parsedData.email || '').trim() || extractEmailFallback(fullContent),
+        phone_number: (parsedData.phone_number || '').trim() || extractPhoneFallback(fullContent),
         linkedin_url: (parsedData.linkedin_url || '').trim(),
         location: (parsedData.location || '').trim(),
         professional_summary: (parsedData.professional_summary || '').trim(),
         work_experience: Array.isArray(parsedData.work_experience) ? parsedData.work_experience : [],
         education: Array.isArray(parsedData.education) ? parsedData.education : [],
-        skills: Array.isArray(parsedData.skills) ? parsedData.skills.filter(skill => skill && skill.trim()) : [],
+        skills: Array.isArray(parsedData.skills) ? parsedData.skills.filter(skill => skill && skill.trim()) : extractSkillsFallback(fullContent),
         projects: Array.isArray(parsedData.projects) ? parsedData.projects : []
       };
 
       console.log('Final parsed data:', {
         name: parsedData.full_name,
+        email: parsedData.email,
         skills_count: parsedData.skills.length,
-        experience_count: parsedData.work_experience.length,
-        education_count: parsedData.education.length
+        experience_count: parsedData.work_experience.length
       });
       
     } catch (parseError) {
       console.error('JSON parsing error:', parseError);
-      console.error('Failed to parse text (first 500 chars):', parsedDataText.substring(0, 500));
+      console.error('Failed to parse text:', parsedDataText);
       
-      // Create fallback data structure with partial extraction
-      const fallbackName = extractNameFallback(fullContent);
-      const fallbackSkills = extractSkillsFallback(fullContent);
-      
+      // Use comprehensive fallback extraction
       parsedData = {
-        full_name: fallbackName || 'Parsing Error - Manual Review Needed',
+        full_name: extractNameFallback(fullContent) || 'Name extraction failed',
         email: extractEmailFallback(fullContent) || '',
         phone_number: extractPhoneFallback(fullContent) || '',
-        linkedin_url: '',
-        location: '',
-        professional_summary: 'Resume content could not be parsed automatically. Manual review recommended.',
+        linkedin_url: extractLinkedInFallback(fullContent) || '',
+        location: extractLocationFallback(fullContent) || '',
+        professional_summary: 'AI parsing encountered an issue. Please review manually.',
         work_experience: [],
         education: [],
-        skills: fallbackSkills,
+        skills: extractSkillsFallback(fullContent),
         projects: []
       };
       
       console.log('Using fallback parsing:', parsedData);
     }
 
-    // Extract skills for quick access
+    // Extract skills for database
     const skillsExtracted = parsedData.skills || [];
     console.log('Final extracted skills:', skillsExtracted);
 
@@ -342,19 +357,24 @@ serve(async (req) => {
   }
 });
 
-// Fallback extraction functions for when AI parsing fails
+// Enhanced fallback extraction functions
 function extractNameFallback(content: string): string {
-  const lines = content.split('\n').slice(0, 10); // Check first 10 lines
+  // Clean content and look for names in first few lines
+  const cleanContent = content.replace(/[^\x20-\x7E\n\r]/g, ' ').replace(/\s+/g, ' ');
+  const lines = cleanContent.split('\n').slice(0, 20);
   
   for (const line of lines) {
     const trimmed = line.trim();
-    // Look for lines that might be names (not emails, not too long, has spaces)
+    // Look for name patterns
     if (trimmed.length > 3 && 
         trimmed.length < 50 && 
         !trimmed.includes('@') && 
         !trimmed.includes('http') &&
-        /^[A-Za-z\s]+$/.test(trimmed) &&
-        trimmed.split(' ').length >= 2) {
+        !trimmed.includes('www') &&
+        !/^\d/.test(trimmed) &&
+        /^[A-Za-z\s\-\.]+$/.test(trimmed) &&
+        trimmed.split(' ').length >= 2 &&
+        trimmed.split(' ').length <= 4) {
       return trimmed;
     }
   }
@@ -363,15 +383,36 @@ function extractNameFallback(content: string): string {
 }
 
 function extractEmailFallback(content: string): string {
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
   const matches = content.match(emailRegex);
   return matches ? matches[0] : '';
 }
 
 function extractPhoneFallback(content: string): string {
-  const phoneRegex = /(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g;
+  const phoneRegex = /(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g;
   const matches = content.match(phoneRegex);
   return matches ? matches[0] : '';
+}
+
+function extractLinkedInFallback(content: string): string {
+  const linkedinRegex = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9\-]+/gi;
+  const matches = content.match(linkedinRegex);
+  return matches ? matches[0] : '';
+}
+
+function extractLocationFallback(content: string): string {
+  // Look for common location patterns
+  const locationRegex = /([A-Za-z\s]+),\s*([A-Z]{2}|[A-Za-z\s]+)(?:\s+\d{5})?/g;
+  const matches = content.match(locationRegex);
+  if (matches) {
+    // Return the first match that looks like a city, state pattern
+    for (const match of matches) {
+      if (match.length < 50 && !match.includes('@')) {
+        return match.trim();
+      }
+    }
+  }
+  return '';
 }
 
 function extractSkillsFallback(content: string): string[] {
@@ -379,15 +420,23 @@ function extractSkillsFallback(content: string): string[] {
     'JavaScript', 'Python', 'Java', 'React', 'Node.js', 'SQL', 'HTML', 'CSS',
     'TypeScript', 'Angular', 'Vue.js', 'PHP', 'C++', 'C#', 'Ruby', 'Go',
     'Swift', 'Kotlin', 'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP',
-    'MongoDB', 'PostgreSQL', 'MySQL', 'Redis', 'Git', 'Agile', 'Scrum'
+    'MongoDB', 'PostgreSQL', 'MySQL', 'Redis', 'Git', 'Agile', 'Scrum',
+    'Express', 'Spring', 'Django', 'Flask', 'Laravel', 'Bootstrap', 'Tailwind',
+    'GraphQL', 'REST', 'API', 'Microservices', 'DevOps', 'CI/CD', 'Jenkins',
+    'Terraform', 'Ansible', 'Linux', 'Ubuntu', 'Windows', 'macOS'
   ];
   
   const foundSkills: string[] = [];
   const lowerContent = content.toLowerCase();
   
   for (const skill of commonSkills) {
-    if (lowerContent.includes(skill.toLowerCase())) {
-      foundSkills.push(skill);
+    const skillLower = skill.toLowerCase();
+    if (lowerContent.includes(skillLower)) {
+      // Make sure it's a whole word match
+      const regex = new RegExp(`\\b${skillLower}\\b`, 'i');
+      if (regex.test(lowerContent)) {
+        foundSkills.push(skill);
+      }
     }
   }
   
