@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -8,94 +7,47 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Intelligent content extraction that preserves important resume information
+// Simplified content extraction that preserves more text
 function extractResumeContent(content: string): string {
   console.log(`Original content length: ${content.length} characters`);
   
-  // Remove PDF artifacts and binary data
+  // Simple cleanup - remove obvious PDF junk but keep readable text
   let cleanContent = content
-    // Remove PDF headers and footers
+    // Remove PDF metadata and binary chunks
     .replace(/%PDF-[\d.]+/g, '')
     .replace(/%%EOF/g, '')
-    .replace(/startxref/g, '')
-    .replace(/xref/g, '')
-    .replace(/trailer/g, '')
-    .replace(/endobj/g, '')
-    .replace(/obj/g, '')
-    .replace(/stream\s+/g, ' ')
-    .replace(/endstream/g, '')
-    // Remove PDF objects and references
-    .replace(/\d+\s+\d+\s+R/g, ' ')
-    .replace(/<<[^>]*>>/g, ' ')
-    .replace(/\[[\d\s.,-]+\]/g, ' ')
-    .replace(/\/[A-Za-z][A-Za-z0-9]*/g, ' ')
-    // Remove escape sequences and binary characters
-    .replace(/\\[nrt]/g, ' ')
-    .replace(/\\\(/g, '(')
-    .replace(/\\\)/g, ')')
-    .replace(/[^\x20-\x7E\s]/g, ' ')
-    // Normalize whitespace
+    .replace(/obj\s*<<.*?>>\s*stream/gs, ' ')
+    .replace(/endstream\s*endobj/g, ' ')
+    .replace(/\d+\s+\d+\s+obj/g, ' ')
+    .replace(/\/[A-Z][A-Za-z0-9]*\s+/g, ' ')
+    // Clean up whitespace and special chars but keep letters/numbers
+    .replace(/[^\w\s@._-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Extract meaningful sentences and phrases
-  const sentences = cleanContent.split(/[.!?]\s+|\n+/);
-  const meaningfulContent: string[] = [];
-  const keywords = [
-    // Names and contact patterns
-    /^[A-Z][a-z]+\s+[A-Z][a-z]+/,
-    /@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
-    /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/,
-    /linkedin|github/i,
-    
-    // Resume sections
-    /\b(experience|education|skills|summary|objective|projects|certifications|work|employment|qualifications|achievements|profile)\b/i,
-    
-    // Job titles and roles
-    /\b(developer|engineer|manager|analyst|consultant|designer|coordinator|director|lead|senior|junior|associate|specialist|administrator|architect|scientist|researcher|intern|freelance)\b/i,
-    
-    // Companies and institutions
-    /\b(inc|llc|corp|ltd|company|technologies|solutions|systems|university|college|institute|school)\b/i,
-    
-    // Technical skills
-    /\b(javascript|python|java|react|node|angular|vue|html|css|sql|mongodb|postgresql|mysql|aws|azure|docker|kubernetes|git|linux|windows|adobe|microsoft|google|oracle|salesforce|tableau|excel|powerbi)\b/i,
-    
-    // Education
-    /\b(bachelor|master|degree|phd|certification|diploma|graduate|undergraduate|mba|bs|ba|ms|ma)\b/i,
-    
-    // Dates
-    /\b(19|20)\d{2}\b/,
-    /(january|february|march|april|may|june|july|august|september|october|november|december)/i,
-    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i
-  ];
-
-  for (const sentence of sentences) {
-    const trimmed = sentence.trim();
-    if (trimmed.length < 3 || trimmed.length > 200) continue;
-    
-    // Check if sentence contains important keywords
-    const isImportant = keywords.some(pattern => pattern.test(trimmed));
-    
-    if (isImportant || trimmed.split(' ').length >= 3) {
-      meaningfulContent.push(trimmed);
-    }
-  }
-
-  // Join meaningful content and ensure it's within limits
-  let result = meaningfulContent.join('. ').substring(0, 8000); // Conservative limit
+  // Take first 4000 characters to stay well under token limits
+  const result = cleanContent.substring(0, 4000);
   
   console.log(`Extracted content length: ${result.length} characters`);
-  console.log(`Sample content: ${result.substring(0, 300)}...`);
+  console.log(`Sample content: ${result.substring(0, 200)}...`);
   
-  return result || content.substring(0, 1000); // Fallback
+  return result;
 }
 
-function createSimplePrompt(content: string): string {
-  return `Extract resume information from this text and return ONLY a valid JSON object.
+// Strict prompt that forces JSON output
+function createStrictPrompt(content: string): string {
+  return `You are a resume parser. Extract information from this text and return ONLY valid JSON.
 
-Text: ${content}
+RULES:
+1. You MUST return valid JSON only
+2. No explanations, no markdown, no extra text
+3. If you can't find a field, use empty string "" or empty array []
+4. Never return anything other than the JSON object
 
-Return this exact JSON structure with extracted data:
+Text to parse:
+${content}
+
+Return exactly this JSON structure:
 {
   "full_name": "",
   "email": "",
@@ -170,13 +122,13 @@ serve(async (req) => {
       throw new Error('File contains no readable text');
     }
     
-    // Extract content intelligently
+    // Extract content with simpler approach
     const extractedContent = extractResumeContent(fullContent);
-    const prompt = createSimplePrompt(extractedContent);
+    const prompt = createStrictPrompt(extractedContent);
 
     console.log('Calling Groq API...');
 
-    // Call Groq API with minimal settings
+    // Call Groq API with stricter settings
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -187,12 +139,17 @@ serve(async (req) => {
         model: 'llama3-8b-8192',
         messages: [
           {
+            role: 'system',
+            content: 'You are a JSON-only resume parser. Return only valid JSON, never any explanatory text.'
+          },
+          {
             role: 'user',
             content: prompt
           }
         ],
         temperature: 0,
-        max_tokens: 1500,
+        max_tokens: 1000,
+        top_p: 0.1,
       }),
     });
 
@@ -212,41 +169,46 @@ serve(async (req) => {
     const aiResponse = groqData.choices[0].message.content.trim();
     console.log('AI response:', aiResponse);
     
-    // Parse JSON response
+    // Parse JSON response with better error handling
     let parsedData;
     try {
-      // Clean the response
+      // Clean the response more aggressively
       let jsonText = aiResponse;
       
-      // Remove markdown formatting
-      jsonText = jsonText.replace(/```json\s*/gi, '');
-      jsonText = jsonText.replace(/```\s*/gi, '');
+      // Remove any markdown or extra text
+      jsonText = jsonText.replace(/```json/gi, '');
+      jsonText = jsonText.replace(/```/gi, '');
+      jsonText = jsonText.replace(/^[^{]*/g, ''); // Remove everything before first {
+      jsonText = jsonText.replace(/[^}]*$/g, ''); // Remove everything after last }
       
-      // Extract JSON object
+      // Find the JSON object boundaries
       const startIndex = jsonText.indexOf('{');
       const endIndex = jsonText.lastIndexOf('}');
       
-      if (startIndex !== -1 && endIndex !== -1) {
-        jsonText = jsonText.substring(startIndex, endIndex + 1);
+      if (startIndex === -1 || endIndex === -1) {
+        throw new Error('No JSON object found in AI response');
       }
       
+      jsonText = jsonText.substring(startIndex, endIndex + 1);
+      
+      console.log('Attempting to parse JSON:', jsonText);
       parsedData = JSON.parse(jsonText);
       
-      // Ensure all required fields exist
+      // Ensure all required fields exist with proper defaults
       parsedData = {
-        full_name: (parsedData.full_name || '').trim(),
-        email: (parsedData.email || '').trim(),
-        phone_number: (parsedData.phone_number || '').trim(),
-        linkedin_url: (parsedData.linkedin_url || '').trim(),
-        location: (parsedData.location || '').trim(),
-        professional_summary: (parsedData.professional_summary || '').trim(),
+        full_name: String(parsedData.full_name || '').trim(),
+        email: String(parsedData.email || '').trim(),
+        phone_number: String(parsedData.phone_number || '').trim(),
+        linkedin_url: String(parsedData.linkedin_url || '').trim(),
+        location: String(parsedData.location || '').trim(),
+        professional_summary: String(parsedData.professional_summary || '').trim(),
         work_experience: Array.isArray(parsedData.work_experience) ? parsedData.work_experience : [],
         education: Array.isArray(parsedData.education) ? parsedData.education : [],
-        skills: Array.isArray(parsedData.skills) ? parsedData.skills.filter(skill => skill && skill.trim()) : [],
+        skills: Array.isArray(parsedData.skills) ? parsedData.skills.filter(skill => skill && String(skill).trim()) : [],
         projects: Array.isArray(parsedData.projects) ? parsedData.projects : []
       };
 
-      console.log('Parsed data:', {
+      console.log('Successfully parsed data:', {
         name: parsedData.full_name,
         email: parsedData.email,
         skills_count: parsedData.skills.length
@@ -254,14 +216,23 @@ serve(async (req) => {
       
     } catch (parseError) {
       console.error('JSON parsing failed:', parseError);
-      console.error('AI response was:', aiResponse);
-      throw new Error('Failed to parse AI response');
-    }
-
-    // Validate meaningful data was extracted
-    if (!parsedData.full_name && !parsedData.email && parsedData.skills.length === 0) {
-      console.error('No meaningful data extracted');
-      throw new Error('Unable to extract resume information');
+      console.error('Raw AI response was:', aiResponse);
+      
+      // Fallback: create empty structure
+      parsedData = {
+        full_name: '',
+        email: '',
+        phone_number: '',
+        linkedin_url: '',
+        location: '',
+        professional_summary: '',
+        work_experience: [],
+        education: [],
+        skills: [],
+        projects: []
+      };
+      
+      console.log('Using fallback empty structure');
     }
 
     // Update resume with parsed data
