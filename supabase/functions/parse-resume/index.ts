@@ -34,7 +34,6 @@ function extractResumeContent(content: string): string {
     /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, // Names (First Last)
     /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // Emails
     /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, // Phone numbers
-    /\b(?:JavaScript|Python|Java|React|Node\.js|SQL|HTML|CSS|AWS|Docker|Kubernetes|Git|Angular|Vue|MongoDB|PostgreSQL|MySQL|TypeScript|PHP|C\+\+|C#|Ruby|Swift|Kotlin|Go|Rust|Scala|R|MATLAB|Tableau|Power BI|Excel|Salesforce|Adobe|Photoshop|Illustrator|AutoCAD|SolidWorks|Linux|Windows|macOS|Agile|Scrum|DevOps|CI\/CD|REST|API|GraphQL|Machine Learning|AI|Data Science|Analytics|Cloud|Azure|GCP|Terraform|Jenkins|JIRA|Confluence|Slack|Teams|Zoom|Project Management|Leadership|Communication|Problem Solving|Critical Thinking|Time Management|Teamwork|Adaptability|Creativity|Innovation|Strategic Planning|Budget Management|Risk Management|Quality Assurance|Testing|Debugging|Troubleshooting|Documentation|Training|Mentoring|Coaching|Negotiation|Sales|Marketing|Customer Service|Business Analysis|Process Improvement|Six Sigma|Lean|ITIL|PMP|Certified|Certification|Bachelor|Master|PhD|Degree|University|College|Institute|School|Education|Experience|Work|Employment|Job|Career|Professional|Skills|Technical|Soft|Hard|Core|Key|Primary|Secondary|Advanced|Intermediate|Beginner|Expert|Proficient|Familiar|Knowledge|Understanding|Expertise|Competency|Ability|Capability|Talent|Strength|Achievement|Accomplishment|Award|Recognition|Honor|Certificate|License|Accreditation)\b/gi, // Skills and keywords
   ];
   
   let extractedText = '';
@@ -51,59 +50,51 @@ function extractResumeContent(content: string): string {
       .trim();
   }
   
-  // Take first 3000 characters to stay under token limits
-  const result = extractedText.substring(0, 3000).trim();
+  // Take first 2000 characters to stay under token limits
+  const result = extractedText.substring(0, 2000).trim();
   
   console.log(`Extracted content length: ${result.length} characters`);
-  console.log(`Sample content: ${result.substring(0, 300)}...`);
+  console.log(`Sample content: ${result.substring(0, 200)}...`);
   
   return result;
 }
 
 // Enhanced prompt for better parsing
 function createParsingPrompt(content: string): string {
-  return `You are a professional resume parser. Extract information from this resume text and return ONLY a valid JSON object with the exact structure shown below.
+  return `Parse this resume and return ONLY valid JSON. No explanations, no markdown, just the JSON object.
 
-IMPORTANT RULES:
-1. Return ONLY the JSON object, no explanations or markdown
-2. If you cannot find a field, use empty string "" or empty array []
-3. For skills, include both technical skills (programming languages, tools, software) and soft skills
-4. For work experience, include company, position, duration, and description
-5. For education, include institution, degree, field of study, and graduation year
+Resume text: ${content}
 
-Resume text:
-${content}
-
-Return this exact JSON structure:
+Return exactly this structure:
 {
-  "full_name": "",
-  "email": "",
-  "phone_number": "",
-  "linkedin_url": "",
-  "location": "",
-  "professional_summary": "",
+  "full_name": "string",
+  "email": "string", 
+  "phone_number": "string",
+  "linkedin_url": "string",
+  "location": "string",
+  "professional_summary": "string",
   "work_experience": [
     {
-      "company": "",
-      "position": "",
-      "duration": "",
-      "description": ""
+      "company": "string",
+      "position": "string", 
+      "duration": "string",
+      "description": "string"
     }
   ],
   "education": [
     {
-      "institution": "",
-      "degree": "",
-      "field_of_study": "",
-      "graduation_year": ""
+      "institution": "string",
+      "degree": "string",
+      "field_of_study": "string",
+      "graduation_year": "string"
     }
   ],
-  "skills": [],
+  "skills": ["string"],
   "projects": [
     {
-      "name": "",
-      "description": "",
-      "technologies": []
+      "name": "string",
+      "description": "string",
+      "technologies": ["string"]
     }
   ]
 }`;
@@ -178,7 +169,7 @@ serve(async (req) => {
     
     const prompt = createParsingPrompt(extractedContent);
 
-    console.log('Calling Groq API with enhanced prompt...');
+    console.log('Calling Groq API...');
 
     // Call Groq API with better parameters
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -192,7 +183,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a resume parsing specialist. Return only valid JSON objects with extracted resume information. Never include explanations or formatting.'
+            content: 'You are a precise resume parser. Return only valid JSON with the exact structure requested. No explanations, no markdown formatting, just clean JSON.'
           },
           {
             role: 'user',
@@ -200,7 +191,7 @@ serve(async (req) => {
           }
         ],
         temperature: 0.1,
-        max_tokens: 2000,
+        max_tokens: 1500,
         top_p: 0.1,
       }),
     });
@@ -219,46 +210,71 @@ serve(async (req) => {
     }
 
     const aiResponse = groqData.choices[0].message.content.trim();
-    console.log('Raw AI response:', aiResponse.substring(0, 500) + '...');
+    console.log('Raw AI response:', aiResponse);
     
-    // Parse JSON response
+    // Parse JSON response with better error handling
     let parsedData;
     try {
       // Clean response more thoroughly
       let jsonText = aiResponse;
       
-      // Remove markdown formatting
-      jsonText = jsonText.replace(/```json/gi, '');
-      jsonText = jsonText.replace(/```/gi, '');
+      // Remove any markdown formatting
+      jsonText = jsonText.replace(/```json\s*/gi, '');
+      jsonText = jsonText.replace(/```\s*/gi, '');
+      jsonText = jsonText.replace(/^\s*```\s*/gm, '');
+      jsonText = jsonText.replace(/\s*```\s*$/gm, '');
       
-      // Find JSON object boundaries
-      const startIndex = jsonText.indexOf('{');
-      const endIndex = jsonText.lastIndexOf('}');
+      // Find the actual JSON object
+      let startIndex = jsonText.indexOf('{');
+      let endIndex = jsonText.lastIndexOf('}');
       
-      if (startIndex === -1 || endIndex === -1) {
-        throw new Error('No JSON object found in AI response');
+      if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+        throw new Error('No valid JSON object found in AI response');
       }
       
       jsonText = jsonText.substring(startIndex, endIndex + 1);
       
-      console.log('Attempting to parse JSON...');
+      console.log('Cleaned JSON text:', jsonText);
+      
+      // Parse the JSON
       parsedData = JSON.parse(jsonText);
       
-      // Validate and clean parsed data
-      parsedData = {
+      // Validate and clean the parsed data
+      const cleanedData = {
         full_name: String(parsedData.full_name || '').trim(),
         email: String(parsedData.email || '').trim(),
         phone_number: String(parsedData.phone_number || '').trim(),
         linkedin_url: String(parsedData.linkedin_url || '').trim(),
         location: String(parsedData.location || '').trim(),
         professional_summary: String(parsedData.professional_summary || '').trim(),
-        work_experience: Array.isArray(parsedData.work_experience) ? parsedData.work_experience : [],
-        education: Array.isArray(parsedData.education) ? parsedData.education : [],
-        skills: Array.isArray(parsedData.skills) ? parsedData.skills.filter(skill => skill && String(skill).trim()) : [],
-        projects: Array.isArray(parsedData.projects) ? parsedData.projects : []
+        work_experience: Array.isArray(parsedData.work_experience) ? 
+          parsedData.work_experience.map((exp: any) => ({
+            company: String(exp.company || '').trim(),
+            position: String(exp.position || '').trim(),
+            duration: String(exp.duration || '').trim(),
+            description: String(exp.description || '').trim()
+          })) : [],
+        education: Array.isArray(parsedData.education) ? 
+          parsedData.education.map((edu: any) => ({
+            institution: String(edu.institution || '').trim(),
+            degree: String(edu.degree || '').trim(),
+            field_of_study: String(edu.field_of_study || '').trim(),
+            graduation_year: String(edu.graduation_year || '').trim()
+          })) : [],
+        skills: Array.isArray(parsedData.skills) ? 
+          parsedData.skills.filter((skill: any) => skill && String(skill).trim()).map((skill: any) => String(skill).trim()) : [],
+        projects: Array.isArray(parsedData.projects) ? 
+          parsedData.projects.map((project: any) => ({
+            name: String(project.name || '').trim(),
+            description: String(project.description || '').trim(),
+            technologies: Array.isArray(project.technologies) ? 
+              project.technologies.map((tech: any) => String(tech).trim()) : []
+          })) : []
       };
 
-      console.log('Successfully parsed data:', {
+      parsedData = cleanedData;
+
+      console.log('Successfully parsed and cleaned data:', {
         name: parsedData.full_name,
         email: parsedData.email,
         skills_count: parsedData.skills.length,
@@ -268,7 +284,7 @@ serve(async (req) => {
     } catch (parseError) {
       console.error('JSON parsing failed:', parseError);
       console.error('Raw AI response was:', aiResponse);
-      throw new Error('Failed to parse AI response as JSON');
+      throw new Error(`Failed to parse AI response: ${parseError.message}`);
     }
 
     // Update resume with parsed data
