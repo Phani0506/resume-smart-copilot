@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -7,42 +8,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Improved PDF content extraction function
+// Enhanced PDF content extraction with multiple strategies
 function extractResumeContent(content: string): string {
   console.log(`Original content length: ${content.length} characters`);
   
-  // For PDF files, we need to extract meaningful text from the raw content
-  let cleanContent = content;
+  let extractedText = '';
   
-  // Remove PDF headers and metadata
-  cleanContent = cleanContent.replace(/%PDF-[\d.]+/g, '');
-  cleanContent = cleanContent.replace(/%%EOF/g, '');
-  
-  // Remove PDF object structures but keep text content
-  cleanContent = cleanContent.replace(/\d+\s+\d+\s+obj/g, ' ');
-  cleanContent = cleanContent.replace(/endobj/g, ' ');
-  cleanContent = cleanContent.replace(/stream\s*[\s\S]*?\s*endstream/g, ' ');
-  
-  // Remove PDF commands and keep text
-  cleanContent = cleanContent.replace(/\/[A-Z][A-Za-z0-9]*\s*/g, ' ');
-  cleanContent = cleanContent.replace(/<<.*?>>/g, ' ');
-  cleanContent = cleanContent.replace(/\[.*?\]/g, ' ');
-  
-  // Extract readable text by looking for common patterns
+  // Strategy 1: Extract readable text patterns
   const textPatterns = [
-    /[A-Za-z][A-Za-z\s]{2,}/g, // Words and phrases
-    /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, // Names (First Last)
-    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // Emails
-    /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, // Phone numbers
+    /[A-Za-z][A-Za-z\s]{3,}/g, // Words and phrases (minimum 4 chars)
+    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g, // Names (Capital Case)
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi, // Emails
+    /\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // Phone numbers
+    /\b(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9-]+\b/gi, // LinkedIn URLs
   ];
   
-  let extractedText = '';
   textPatterns.forEach(pattern => {
-    const matches = cleanContent.match(pattern) || [];
+    const matches = content.match(pattern) || [];
     extractedText += matches.join(' ') + ' ';
   });
   
-  // If extraction didn't work well, fall back to simple cleaning
+  // Strategy 2: Extract text between common PDF markers
+  const cleanContent = content
+    .replace(/%PDF-[\d.]+/g, ' ')
+    .replace(/%%EOF/g, ' ')
+    .replace(/\d+\s+\d+\s+obj/g, ' ')
+    .replace(/endobj/g, ' ')
+    .replace(/stream\s*[\s\S]*?\s*endstream/g, ' ')
+    .replace(/\/[A-Z][A-Za-z0-9]*\s*/g, ' ')
+    .replace(/<<[^>]*>>/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[^\w\s@._-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Strategy 3: If first strategy didn't work well, use cleaned content
+  if (extractedText.length < 200 && cleanContent.length > extractedText.length) {
+    extractedText = cleanContent;
+  }
+  
+  // Strategy 4: If still not enough content, extract everything readable
   if (extractedText.length < 100) {
     extractedText = content
       .replace(/[^\w\s@._-]/g, ' ')
@@ -50,54 +55,126 @@ function extractResumeContent(content: string): string {
       .trim();
   }
   
-  // Take first 2000 characters to stay under token limits
-  const result = extractedText.substring(0, 2000).trim();
+  // Take meaningful portion (up to 3000 characters for better context)
+  const result = extractedText.substring(0, 3000).trim();
   
   console.log(`Extracted content length: ${result.length} characters`);
-  console.log(`Sample content: ${result.substring(0, 200)}...`);
+  console.log(`Sample content: ${result.substring(0, 300)}...`);
   
   return result;
 }
 
-// Enhanced prompt for better parsing
+// Enhanced parsing prompt with specific instructions
 function createParsingPrompt(content: string): string {
-  return `Parse this resume and return ONLY valid JSON. No explanations, no markdown, just the JSON object.
+  return `You are a professional resume parser. Extract information from this resume text and return ONLY a valid JSON object.
 
-Resume text: ${content}
+IMPORTANT RULES:
+- Return ONLY the JSON object, no explanations or markdown
+- If information is not found, use empty string "" or empty array []
+- Extract skills from any technical skills, tools, programming languages, or technologies mentioned
+- Be thorough in extracting all available information
 
-Return exactly this structure:
+Resume content:
+${content}
+
+Return this exact JSON structure:
 {
-  "full_name": "string",
-  "email": "string", 
-  "phone_number": "string",
-  "linkedin_url": "string",
-  "location": "string",
-  "professional_summary": "string",
+  "full_name": "",
+  "email": "",
+  "phone_number": "",
+  "linkedin_url": "",
+  "location": "",
+  "professional_summary": "",
   "work_experience": [
     {
-      "company": "string",
-      "position": "string", 
-      "duration": "string",
-      "description": "string"
+      "company": "",
+      "position": "",
+      "duration": "",
+      "description": ""
     }
   ],
   "education": [
     {
-      "institution": "string",
-      "degree": "string",
-      "field_of_study": "string",
-      "graduation_year": "string"
+      "institution": "",
+      "degree": "",
+      "field_of_study": "",
+      "graduation_year": ""
     }
   ],
-  "skills": ["string"],
+  "skills": [],
   "projects": [
     {
-      "name": "string",
-      "description": "string",
-      "technologies": ["string"]
+      "name": "",
+      "description": "",
+      "technologies": []
     }
   ]
 }`;
+}
+
+// Retry function for API calls
+async function callGroqAPIWithRetry(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Groq API attempt ${attempt}/${maxRetries}...`);
+      
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-70b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a precise resume parser. Return only valid JSON with the exact structure requested. No explanations, no markdown formatting, just clean JSON.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          top_p: 0.1,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Groq API error (attempt ${attempt}):`, response.status, errorText);
+        
+        if (attempt === maxRetries) {
+          throw new Error(`AI service error: ${response.status}`);
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log(`AI response received on attempt ${attempt}`);
+      
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error('Invalid AI response structure');
+      }
+      
+      return data;
+      
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
 }
 
 serve(async (req) => {
@@ -160,7 +237,7 @@ serve(async (req) => {
       throw new Error('File contains no readable text');
     }
     
-    // Extract meaningful content
+    // Extract meaningful content with enhanced extraction
     const extractedContent = extractResumeContent(fullContent);
     
     if (extractedContent.length < 50) {
@@ -169,62 +246,24 @@ serve(async (req) => {
     
     const prompt = createParsingPrompt(extractedContent);
 
-    console.log('Calling Groq API...');
-
-    // Call Groq API with better parameters
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${groqApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama3-70b-8192',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a precise resume parser. Return only valid JSON with the exact structure requested. No explanations, no markdown formatting, just clean JSON.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 1500,
-        top_p: 0.1,
-      }),
-    });
-
-    if (!groqResponse.ok) {
-      const errorText = await groqResponse.text();
-      console.error('Groq API error:', groqResponse.status, errorText);
-      throw new Error(`AI service error: ${groqResponse.status}`);
-    }
-
-    const groqData = await groqResponse.json();
-    console.log('AI response received');
-
-    if (!groqData.choices?.[0]?.message?.content) {
-      throw new Error('Invalid AI response');
-    }
-
-    const aiResponse = groqData.choices[0].message.content.trim();
-    console.log('Raw AI response:', aiResponse);
+    // Call Groq API with retry logic
+    const groqData = await callGroqAPIWithRetry(prompt, groqApiKey);
     
-    // Parse JSON response with better error handling
+    const aiResponse = groqData.choices[0].message.content.trim();
+    console.log('Raw AI response:', aiResponse.substring(0, 500) + '...');
+    
+    // Enhanced JSON parsing with multiple cleaning strategies
     let parsedData;
     try {
-      // Clean response more thoroughly
       let jsonText = aiResponse;
       
-      // Remove any markdown formatting
+      // Remove markdown formatting
       jsonText = jsonText.replace(/```json\s*/gi, '');
       jsonText = jsonText.replace(/```\s*/gi, '');
       jsonText = jsonText.replace(/^\s*```\s*/gm, '');
       jsonText = jsonText.replace(/\s*```\s*$/gm, '');
       
-      // Find the actual JSON object
+      // Find JSON object boundaries
       let startIndex = jsonText.indexOf('{');
       let endIndex = jsonText.lastIndexOf('}');
       
@@ -234,12 +273,16 @@ serve(async (req) => {
       
       jsonText = jsonText.substring(startIndex, endIndex + 1);
       
-      console.log('Cleaned JSON text:', jsonText);
+      // Additional cleaning
+      jsonText = jsonText.replace(/,\s*}/g, '}'); // Remove trailing commas
+      jsonText = jsonText.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+      
+      console.log('Cleaned JSON text length:', jsonText.length);
       
       // Parse the JSON
       parsedData = JSON.parse(jsonText);
       
-      // Validate and clean the parsed data
+      // Validate and ensure required structure
       const cleanedData = {
         full_name: String(parsedData.full_name || '').trim(),
         email: String(parsedData.email || '').trim(),
@@ -253,38 +296,51 @@ serve(async (req) => {
             position: String(exp.position || '').trim(),
             duration: String(exp.duration || '').trim(),
             description: String(exp.description || '').trim()
-          })) : [],
+          })).filter((exp: any) => exp.company || exp.position) : [],
         education: Array.isArray(parsedData.education) ? 
           parsedData.education.map((edu: any) => ({
             institution: String(edu.institution || '').trim(),
             degree: String(edu.degree || '').trim(),
             field_of_study: String(edu.field_of_study || '').trim(),
             graduation_year: String(edu.graduation_year || '').trim()
-          })) : [],
+          })).filter((edu: any) => edu.institution || edu.degree) : [],
         skills: Array.isArray(parsedData.skills) ? 
-          parsedData.skills.filter((skill: any) => skill && String(skill).trim()).map((skill: any) => String(skill).trim()) : [],
+          parsedData.skills
+            .map((skill: any) => String(skill).trim())
+            .filter((skill: string) => skill.length > 0)
+            .slice(0, 50) : [], // Limit to 50 skills
         projects: Array.isArray(parsedData.projects) ? 
           parsedData.projects.map((project: any) => ({
             name: String(project.name || '').trim(),
             description: String(project.description || '').trim(),
             technologies: Array.isArray(project.technologies) ? 
-              project.technologies.map((tech: any) => String(tech).trim()) : []
-          })) : []
+              project.technologies.map((tech: any) => String(tech).trim()).filter((tech: string) => tech.length > 0) : []
+          })).filter((project: any) => project.name || project.description) : []
       };
 
       parsedData = cleanedData;
 
-      console.log('Successfully parsed and cleaned data:', {
+      console.log('Successfully parsed data:', {
         name: parsedData.full_name,
         email: parsedData.email,
         skills_count: parsedData.skills.length,
-        work_experience_count: parsedData.work_experience.length
+        work_experience_count: parsedData.work_experience.length,
+        education_count: parsedData.education.length,
+        projects_count: parsedData.projects.length
       });
       
     } catch (parseError) {
       console.error('JSON parsing failed:', parseError);
       console.error('Raw AI response was:', aiResponse);
       throw new Error(`Failed to parse AI response: ${parseError.message}`);
+    }
+
+    // Ensure we have at least some meaningful data
+    const hasBasicInfo = parsedData.full_name || parsedData.email || parsedData.skills.length > 0 || 
+                        parsedData.work_experience.length > 0 || parsedData.education.length > 0;
+    
+    if (!hasBasicInfo) {
+      console.warn('No meaningful data extracted, but saving what we have');
     }
 
     // Update resume with parsed data
@@ -308,6 +364,9 @@ serve(async (req) => {
       success: true, 
       parsedData,
       skillsCount: parsedData.skills.length,
+      workExperienceCount: parsedData.work_experience.length,
+      educationCount: parsedData.education.length,
+      projectsCount: parsedData.projects.length,
       message: 'Resume parsed successfully' 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
