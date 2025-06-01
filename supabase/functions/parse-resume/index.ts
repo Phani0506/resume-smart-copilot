@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -7,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Multi-strategy content extraction with enhanced techniques
+// Enhanced content extraction with multiple strategies
 function extractResumeContent(content: string): string {
   console.log(`=== CONTENT EXTRACTION STARTED ===`);
   console.log(`Original content length: ${content.length} characters`);
@@ -15,45 +16,54 @@ function extractResumeContent(content: string): string {
   let extractedText = '';
   let bestStrategy = '';
   
-  // Strategy 1: Extract readable text with enhanced patterns
-  console.log(`Trying Strategy 1: Pattern-based extraction...`);
-  const enhancedPatterns = [
-    // Names and proper nouns
-    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g,
-    // Email addresses
-    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi,
-    // Phone numbers (various formats)
-    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,
-    // Skills and technologies (common programming terms)
-    /\b(?:JavaScript|Python|Java|React|Node\.js|SQL|HTML|CSS|Angular|Vue|Docker|AWS|Git|Linux|Windows|MacOS|Office|Excel|PowerPoint|Word|Photoshop|Illustrator|Figma|Sketch)\b/gi,
-    // Experience indicators
-    /\b(?:years?|months?|experience|worked|developed|managed|led|created|built|designed|implemented)\b/gi,
+  // Strategy 1: Enhanced pattern-based extraction
+  console.log(`Trying Strategy 1: Enhanced pattern extraction...`);
+  const patterns = [
+    // Personal information patterns
+    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g, // Names (2-4 words)
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi, // Email
+    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // Phone
+    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9-]+/gi, // LinkedIn
+    
+    // Skills and technologies
+    /\b(?:JavaScript|TypeScript|Python|Java|React|Angular|Vue|Node\.js|Express|MongoDB|PostgreSQL|MySQL|Docker|Kubernetes|AWS|Azure|GCP|Git|GitHub|GitLab|HTML|CSS|SCSS|Bootstrap|Tailwind|PHP|Ruby|C\+\+|C#|Swift|Kotlin|Flutter|React Native|Spring|Django|Flask|Laravel|WordPress|Shopify|Figma|Adobe|Photoshop|Illustrator|InDesign|Sketch|SQL|NoSQL|Redis|Elasticsearch|Jenkins|CI\/CD|DevOps|Linux|Windows|MacOS|Office|Excel|PowerPoint|Word|Slack|Jira|Trello|Asana|Salesforce|HubSpot|Analytics|SEO|SEM|PPC|Social Media|Marketing|Sales|Leadership|Management|Communication|Problem Solving|Team Work|Project Management|Agile|Scrum|Kanban)\b/gi,
+    
+    // Job titles and positions
+    /\b(?:Software Engineer|Developer|Frontend|Backend|Full Stack|Data Scientist|Product Manager|Project Manager|Designer|UX|UI|DevOps|QA|Tester|Analyst|Consultant|Director|Manager|Lead|Senior|Junior|Intern|CEO|CTO|VP|Head of|Marketing|Sales|Operations|Finance|HR|Recruiter)\b/gi,
+    
     // Education keywords
-    /\b(?:University|College|Bachelor|Master|PhD|Degree|Graduate|School|Institute|Academy)\b/gi,
-    // Common resume sections
-    /\b(?:Experience|Education|Skills|Projects|Certifications|Achievements|Summary|Objective|Contact|Profile)\b/gi,
-    // Complete sentences and phrases
+    /\b(?:University|College|Institute|School|Academy|Bachelor|Master|PhD|Degree|Graduate|Undergraduate|Diploma|Certificate|MBA|MS|BS|BA|MA|PhD|Computer Science|Engineering|Business|Marketing|Finance|Economics|Mathematics|Statistics|Physics|Chemistry|Biology)\b/gi,
+    
+    // Company and experience indicators
+    /\b(?:Company|Corporation|Inc|LLC|Ltd|Group|Technologies|Solutions|Systems|Services|Consulting|Agency|Studio|Lab|Startup|Enterprise|Global|International|years?|months?|experience|worked|developed|managed|led|created|built|designed|implemented|achieved|improved|increased|decreased|responsible|collaborated|coordinated)\b/gi,
+    
+    // Dates and durations
+    /\b(?:20\d{2}|19\d{2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\b/gi,
+    
+    // Complete meaningful phrases
     /[A-Z][^.!?]*[.!?]/g,
-    // Word sequences (minimum 3 words)
+    
+    // Word sequences (3+ words)
     /\b[A-Za-z]+(?:\s+[A-Za-z]+){2,}\b/g,
   ];
   
   let strategy1Text = '';
-  enhancedPatterns.forEach((pattern, index) => {
+  patterns.forEach((pattern, index) => {
     const matches = content.match(pattern) || [];
     console.log(`Pattern ${index + 1} found ${matches.length} matches`);
-    strategy1Text += matches.join(' ') + ' ';
+    if (matches.length > 0) {
+      strategy1Text += matches.join(' ') + ' ';
+    }
   });
   
-  if (strategy1Text.length > 200) {
+  if (strategy1Text.length > 300) {
     extractedText = strategy1Text;
-    bestStrategy = 'Pattern-based extraction';
+    bestStrategy = 'Enhanced pattern extraction';
   }
   
-  // Strategy 2: Clean PDF markers and extract readable content
-  console.log(`Trying Strategy 2: PDF cleaning extraction...`);
+  // Strategy 2: PDF structure cleaning
+  console.log(`Trying Strategy 2: PDF structure cleaning...`);
   const strategy2Text = content
-    // Remove PDF structure markers
     .replace(/%PDF-[\d.]+/g, ' ')
     .replace(/%%EOF/g, ' ')
     .replace(/\d+\s+\d+\s+obj/g, ' ')
@@ -62,117 +72,83 @@ function extractResumeContent(content: string): string {
     .replace(/\/[A-Z][A-Za-z0-9]*\s*/g, ' ')
     .replace(/<<[^>]*>>/g, ' ')
     .replace(/\[[^\]]*\]/g, ' ')
-    // Remove non-readable characters but keep important punctuation
     .replace(/[^\w\s@._\-(),]/g, ' ')
-    // Normalize whitespace
     .replace(/\s+/g, ' ')
     .trim();
   
-  if (strategy2Text.length > extractedText.length && strategy2Text.length > 200) {
+  if (strategy2Text.length > extractedText.length && strategy2Text.length > 300) {
     extractedText = strategy2Text;
-    bestStrategy = 'PDF cleaning extraction';
+    bestStrategy = 'PDF structure cleaning';
   }
   
-  // Strategy 3: Character-by-character filtering for heavily encoded PDFs
+  // Strategy 3: Character-by-character filtering
   console.log(`Trying Strategy 3: Character filtering...`);
   let strategy3Text = '';
   for (let i = 0; i < content.length; i++) {
     const char = content[i];
     const code = char.charCodeAt(0);
     
-    // Keep readable ASCII characters, common punctuation, and some Unicode
-    if ((code >= 32 && code <= 126) || // Basic ASCII
-        (code >= 160 && code <= 255) || // Extended ASCII
-        char === '\n' || char === '\r' || char === '\t') {
-      strategy3Text += char;
-    } else if (code > 255 && /[a-zA-Z0-9\s]/.test(char)) {
-      // Keep Unicode letters and numbers
+    if ((code >= 32 && code <= 126) || 
+        (code >= 160 && code <= 255) || 
+        char === '\n' || char === '\r' || char === '\t' ||
+        (code > 255 && /[a-zA-Z0-9\s]/.test(char))) {
       strategy3Text += char;
     }
   }
   
-  strategy3Text = strategy3Text
-    .replace(/\s+/g, ' ')
-    .trim();
+  strategy3Text = strategy3Text.replace(/\s+/g, ' ').trim();
   
-  if (strategy3Text.length > extractedText.length && strategy3Text.length > 200) {
+  if (strategy3Text.length > extractedText.length && strategy3Text.length > 300) {
     extractedText = strategy3Text;
     bestStrategy = 'Character filtering';
   }
   
-  // Strategy 4: Extract everything and let AI filter
-  console.log(`Trying Strategy 4: Raw content with minimal cleaning...`);
+  // Final fallback
   if (extractedText.length < 100) {
-    const strategy4Text = content
+    const fallbackText = content
       .replace(/\0/g, ' ')
-      .replace(/\x00/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    if (strategy4Text.length > 50) {
-      extractedText = strategy4Text;
-      bestStrategy = 'Raw content extraction';
+    if (fallbackText.length > 50) {
+      extractedText = fallbackText;
+      bestStrategy = 'Fallback extraction';
     }
   }
   
-  // Take meaningful portion (up to 4000 characters for better context)
-  const result = extractedText.substring(0, 4000).trim();
+  const result = extractedText.substring(0, 5000).trim();
   
   console.log(`=== EXTRACTION COMPLETED ===`);
   console.log(`Best strategy: ${bestStrategy}`);
-  console.log(`Final extracted content length: ${result.length} characters`);
-  console.log(`Sample content preview: ${result.substring(0, 500)}...`);
+  console.log(`Final content length: ${result.length} characters`);
+  console.log(`Sample: ${result.substring(0, 200)}...`);
   
   return result;
 }
 
-// Enhanced parsing prompt with step-by-step procedure
-function createStructuredParsingPrompt(content: string): string {
-  return `You are a professional resume parser following a strict procedure. Extract information step by step and return ONLY a valid JSON object.
+// Improved AI prompt with strict JSON requirements
+function createParsingPrompt(content: string): string {
+  return `You are a professional resume parser. Follow these steps EXACTLY and return ONLY valid JSON.
 
-PARSING PROCEDURE - Follow these checkpoints in order:
+PARSING STEPS:
+1. FIND NAME: Look for the candidate's full name (usually at the top)
+2. EXTRACT CONTACT: Find email, phone, LinkedIn, location
+3. IDENTIFY SKILLS: Extract all technical and soft skills mentioned
+4. GET EXPERIENCE: Find job positions, companies, dates, descriptions
+5. EXTRACT EDUCATION: Find degrees, institutions, graduation years
+6. FIND PROJECTS: Look for personal/professional projects
 
-CHECKPOINT 1: IDENTIFY NAME
-- Look for the candidate's full name (usually at the top of the resume)
-- Names are typically in larger fonts or at the beginning
-- May be in formats like "John Smith", "JOHN SMITH", "John M. Smith"
-
-CHECKPOINT 2: EXTRACT CONTACT INFO
-- Find email address (contains @ symbol)
-- Find phone number (various formats with numbers)
-- Find LinkedIn URL (contains linkedin.com)
-- Find location/address
-
-CHECKPOINT 3: IDENTIFY SKILLS
-- Look for "Skills", "Technical Skills", "Technologies" sections
-- Extract programming languages, tools, frameworks, software
-- Include both hard skills (technical) and soft skills
-- Look throughout the document, not just in skills section
-
-CHECKPOINT 4: EXTRACT WORK EXPERIENCE
-- Look for "Experience", "Work Experience", "Employment" sections
-- Extract company names, job titles, dates, descriptions
-- May be in various formats: "Company Name | Position" or separate lines
-
-CHECKPOINT 5: EXTRACT EDUCATION
-- Look for "Education", "Academic Background" sections
-- Extract institution names, degrees, fields of study, graduation years
-- Include universities, colleges, certifications
-
-CHECKPOINT 6: IDENTIFY PROJECTS (if any)
-- Look for "Projects", "Personal Projects", "Portfolio" sections
-- Extract project names, descriptions, technologies used
-
-IMPORTANT RULES:
-- Return ONLY valid JSON, no explanations
-- If a section is not found, use empty string "" or empty array []
+CRITICAL RULES:
+- Return ONLY valid JSON - no explanations, no markdown, no text outside JSON
+- Use empty string "" for missing text fields
+- Use empty array [] for missing array fields
 - Be thorough - extract ALL available information
-- Do not make up information that's not in the resume
+- Do NOT make up information
 
-Resume content to parse:
+Resume content:
 ${content}
 
-Return this exact JSON structure:
+Return this EXACT JSON structure:
 {
   "full_name": "",
   "email": "",
@@ -207,11 +183,142 @@ Return this exact JSON structure:
 }`;
 }
 
-// Enhanced retry function with better error handling
-async function callGroqAPIWithRetry(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
+// Robust JSON parsing with multiple cleaning attempts
+function parseAIResponse(response: string): any {
+  console.log(`=== JSON PARSING STARTED ===`);
+  console.log(`Response length: ${response.length}`);
+  
+  let jsonText = response.trim();
+  
+  // Remove markdown formatting
+  jsonText = jsonText.replace(/```json\s*/gi, '');
+  jsonText = jsonText.replace(/```\s*/gi, '');
+  jsonText = jsonText.replace(/^\s*```/gm, '');
+  jsonText = jsonText.replace(/```\s*$/gm, '');
+  
+  // Find JSON boundaries
+  let startIndex = jsonText.indexOf('{');
+  let endIndex = jsonText.lastIndexOf('}');
+  
+  if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+    throw new Error('No valid JSON object found in response');
+  }
+  
+  jsonText = jsonText.substring(startIndex, endIndex + 1);
+  
+  // Clean common JSON issues
+  jsonText = jsonText
+    .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
+    .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+    .replace(/([^\\])"/g, '$1"')  // Fix unescaped quotes
+    .replace(/"\s*:\s*"([^"]*?[^\\])"/g, '": "$1"')  // Fix quote issues in values
+    .replace(/\n/g, ' ')  // Remove newlines
+    .replace(/\s+/g, ' ');  // Normalize spaces
+  
+  // Additional cleaning for common issues
+  const commonFixes = [
+    [/"\s*0409183911,/g, '"0409183911",'],  // Fix missing quotes after phone numbers
+    [/"\s*(\d+),/g, '"$1",'],  // Fix missing quotes after numbers
+    [/,\s*,/g, ','],  // Remove double commas
+    [/:\s*,/g, ': "",'],  // Fix empty values
+  ];
+  
+  commonFixes.forEach(([pattern, replacement]) => {
+    jsonText = jsonText.replace(pattern, replacement);
+  });
+  
+  console.log(`Cleaned JSON length: ${jsonText.length}`);
+  
+  try {
+    const parsed = JSON.parse(jsonText);
+    console.log(`JSON parsing successful`);
+    return parsed;
+  } catch (error) {
+    console.error(`JSON parse failed: ${error.message}`);
+    console.error(`Problematic JSON: ${jsonText.substring(0, 500)}...`);
+    throw new Error(`Failed to parse JSON: ${error.message}`);
+  }
+}
+
+// Validate and clean parsed data
+function validateParsedData(data: any): any {
+  console.log(`=== DATA VALIDATION STARTED ===`);
+  
+  const cleaned = {
+    full_name: String(data.full_name || '').trim(),
+    email: String(data.email || '').trim(),
+    phone_number: String(data.phone_number || '').trim(),
+    linkedin_url: String(data.linkedin_url || '').trim(),
+    location: String(data.location || '').trim(),
+    professional_summary: String(data.professional_summary || '').trim(),
+    work_experience: [],
+    education: [],
+    skills: [],
+    projects: []
+  };
+  
+  // Clean work experience
+  if (Array.isArray(data.work_experience)) {
+    cleaned.work_experience = data.work_experience
+      .map((exp: any) => ({
+        company: String(exp.company || '').trim(),
+        position: String(exp.position || '').trim(),
+        duration: String(exp.duration || '').trim(),
+        description: String(exp.description || '').trim()
+      }))
+      .filter((exp: any) => exp.company || exp.position);
+  }
+  
+  // Clean education
+  if (Array.isArray(data.education)) {
+    cleaned.education = data.education
+      .map((edu: any) => ({
+        institution: String(edu.institution || '').trim(),
+        degree: String(edu.degree || '').trim(),
+        field_of_study: String(edu.field_of_study || '').trim(),
+        graduation_year: String(edu.graduation_year || '').trim()
+      }))
+      .filter((edu: any) => edu.institution || edu.degree);
+  }
+  
+  // Clean skills
+  if (Array.isArray(data.skills)) {
+    cleaned.skills = data.skills
+      .map((skill: any) => String(skill).trim())
+      .filter((skill: string) => skill.length > 0)
+      .slice(0, 50);  // Limit to 50 skills
+  }
+  
+  // Clean projects
+  if (Array.isArray(data.projects)) {
+    cleaned.projects = data.projects
+      .map((project: any) => ({
+        name: String(project.name || '').trim(),
+        description: String(project.description || '').trim(),
+        technologies: Array.isArray(project.technologies) 
+          ? project.technologies.map((tech: any) => String(tech).trim()).filter((tech: string) => tech.length > 0)
+          : []
+      }))
+      .filter((project: any) => project.name || project.description);
+  }
+  
+  console.log(`=== VALIDATION RESULTS ===`);
+  console.log(`Name: ${cleaned.full_name ? 'FOUND' : 'NOT FOUND'}`);
+  console.log(`Email: ${cleaned.email ? 'FOUND' : 'NOT FOUND'}`);
+  console.log(`Phone: ${cleaned.phone_number ? 'FOUND' : 'NOT FOUND'}`);
+  console.log(`Skills: ${cleaned.skills.length} found`);
+  console.log(`Experience: ${cleaned.work_experience.length} positions`);
+  console.log(`Education: ${cleaned.education.length} entries`);
+  console.log(`Projects: ${cleaned.projects.length} found`);
+  
+  return cleaned;
+}
+
+// Enhanced Groq API call with better error handling
+async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`=== GROQ API CALL ATTEMPT ${attempt}/${maxRetries} ===`);
+      console.log(`=== GROQ API ATTEMPT ${attempt}/${maxRetries} ===`);
       
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -224,52 +331,50 @@ async function callGroqAPIWithRetry(prompt: string, groqApiKey: string, maxRetri
           messages: [
             {
               role: 'system',
-              content: 'You are a professional resume parser. Follow the parsing procedure step by step. Return only valid JSON with the exact structure requested. No explanations, no markdown formatting, just clean JSON.'
+              content: 'You are an expert resume parser. Extract information accurately and return ONLY valid JSON. No explanations, no markdown, just clean JSON.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          temperature: 0.1, // Very low temperature for consistent parsing
-          max_tokens: 2500,
+          temperature: 0.1,
+          max_tokens: 3000,
           top_p: 0.1,
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Groq API error (attempt ${attempt}):`, response.status, errorText);
+        console.error(`Groq API error (attempt ${attempt}): ${response.status} - ${errorText}`);
         
         if (attempt === maxRetries) {
-          throw new Error(`AI service error after ${maxRetries} attempts: ${response.status}`);
+          throw new Error(`Groq API failed after ${maxRetries} attempts: ${response.status}`);
         }
         
-        // Exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        console.log(`Waiting ${delay}ms before retry...`);
+        const delay = Math.min(2000 * attempt, 10000);
+        console.log(`Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
       const data = await response.json();
-      console.log(`AI response received successfully on attempt ${attempt}`);
+      console.log(`Groq API success on attempt ${attempt}`);
       
       if (!data.choices?.[0]?.message?.content) {
-        throw new Error('Invalid AI response structure - no content found');
+        throw new Error('Invalid response structure from Groq API');
       }
       
       return data;
       
     } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error);
+      console.error(`Attempt ${attempt} failed: ${error.message}`);
       
       if (attempt === maxRetries) {
         throw error;
       }
       
-      // Wait before retry
-      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      const delay = Math.min(1000 * attempt, 5000);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -286,8 +391,9 @@ serve(async (req) => {
   try {
     requestBody = await req.json();
     resumeId = requestBody.resumeId;
+    
     console.log('=== RESUME PARSING STARTED ===');
-    console.log('Processing resume ID:', resumeId);
+    console.log(`Processing resume ID: ${resumeId}`);
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -311,7 +417,7 @@ serve(async (req) => {
       throw new Error(`Resume not found: ${resumeError.message}`);
     }
 
-    console.log('Resume found:', resume.file_name);
+    console.log(`Resume found: ${resume.file_name}`);
 
     // Download file from storage
     const { data: fileData, error: fileError } = await supabase.storage
@@ -336,122 +442,38 @@ serve(async (req) => {
       throw new Error('File contains no readable text');
     }
     
-    // Extract meaningful content with enhanced multi-strategy approach
+    // Extract content with enhanced strategies
     const extractedContent = extractResumeContent(fullContent);
     
-    if (extractedContent.length < 50) {
+    if (extractedContent.length < 100) {
       console.error('Insufficient content extracted:', extractedContent.substring(0, 200));
-      throw new Error('Could not extract meaningful content from resume. The file may be corrupted or in an unsupported format.');
+      throw new Error('Could not extract meaningful content from resume');
     }
     
-    const prompt = createStructuredParsingPrompt(extractedContent);
+    // Create parsing prompt
+    const prompt = createParsingPrompt(extractedContent);
 
-    // Call Groq API with retry logic
-    const groqData = await callGroqAPIWithRetry(prompt, groqApiKey);
+    // Call Groq API
+    const groqData = await callGroqAPI(prompt, groqApiKey);
     
     const aiResponse = groqData.choices[0].message.content.trim();
-    console.log('=== AI PARSING RESPONSE ===');
-    console.log('Raw AI response length:', aiResponse.length);
-    console.log('Response preview:', aiResponse.substring(0, 300) + '...');
+    console.log(`=== AI RESPONSE RECEIVED ===`);
+    console.log(`Response length: ${aiResponse.length}`);
     
-    // Enhanced JSON parsing with multiple cleaning strategies
-    let parsedData;
-    try {
-      let jsonText = aiResponse;
-      
-      console.log('=== JSON CLEANING STARTED ===');
-      
-      // Remove markdown formatting
-      jsonText = jsonText.replace(/```json\s*/gi, '');
-      jsonText = jsonText.replace(/```\s*/gi, '');
-      jsonText = jsonText.replace(/^\s*```\s*/gm, '');
-      jsonText = jsonText.replace(/\s*```\s*$/gm, '');
-      
-      // Find JSON object boundaries
-      let startIndex = jsonText.indexOf('{');
-      let endIndex = jsonText.lastIndexOf('}');
-      
-      if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-        console.error('No valid JSON object boundaries found');
-        throw new Error('No valid JSON object found in AI response');
-      }
-      
-      jsonText = jsonText.substring(startIndex, endIndex + 1);
-      
-      // Clean up common JSON formatting issues
-      jsonText = jsonText.replace(/,\s*}/g, '}'); // Remove trailing commas in objects
-      jsonText = jsonText.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
-      jsonText = jsonText.replace(/\n\s*/g, ' '); // Remove line breaks
-      
-      console.log('Cleaned JSON length:', jsonText.length);
-      
-      // Parse the JSON
-      parsedData = JSON.parse(jsonText);
-      console.log('JSON parsing successful');
-      
-      // Validate and ensure required structure with comprehensive cleaning
-      const cleanedData = {
-        full_name: String(parsedData.full_name || '').trim(),
-        email: String(parsedData.email || '').trim(),
-        phone_number: String(parsedData.phone_number || '').trim(),
-        linkedin_url: String(parsedData.linkedin_url || '').trim(),
-        location: String(parsedData.location || '').trim(),
-        professional_summary: String(parsedData.professional_summary || '').trim(),
-        work_experience: Array.isArray(parsedData.work_experience) ? 
-          parsedData.work_experience.map((exp: any) => ({
-            company: String(exp.company || '').trim(),
-            position: String(exp.position || '').trim(),
-            duration: String(exp.duration || '').trim(),
-            description: String(exp.description || '').trim()
-          })).filter((exp: any) => exp.company || exp.position) : [],
-        education: Array.isArray(parsedData.education) ? 
-          parsedData.education.map((edu: any) => ({
-            institution: String(edu.institution || '').trim(),
-            degree: String(edu.degree || '').trim(),
-            field_of_study: String(edu.field_of_study || '').trim(),
-            graduation_year: String(edu.graduation_year || '').trim()
-          })).filter((edu: any) => edu.institution || edu.degree) : [],
-        skills: Array.isArray(parsedData.skills) ? 
-          parsedData.skills
-            .map((skill: any) => String(skill).trim())
-            .filter((skill: string) => skill.length > 0)
-            .slice(0, 100) : [], // Increased limit for skills
-        projects: Array.isArray(parsedData.projects) ? 
-          parsedData.projects.map((project: any) => ({
-            name: String(project.name || '').trim(),
-            description: String(project.description || '').trim(),
-            technologies: Array.isArray(project.technologies) ? 
-              project.technologies.map((tech: any) => String(tech).trim()).filter((tech: string) => tech.length > 0) : []
-          })).filter((project: any) => project.name || project.description) : []
-      };
-
-      parsedData = cleanedData;
-
-      // Log parsing results with checkpoint verification
-      console.log('=== PARSING CHECKPOINTS VERIFICATION ===');
-      console.log('✓ CHECKPOINT 1 - Name:', parsedData.full_name ? 'FOUND' : 'NOT FOUND');
-      console.log('✓ CHECKPOINT 2 - Contact:', parsedData.email || parsedData.phone_number ? 'FOUND' : 'NOT FOUND');
-      console.log('✓ CHECKPOINT 3 - Skills:', parsedData.skills.length, 'skills found');
-      console.log('✓ CHECKPOINT 4 - Experience:', parsedData.work_experience.length, 'positions found');
-      console.log('✓ CHECKPOINT 5 - Education:', parsedData.education.length, 'entries found');
-      console.log('✓ CHECKPOINT 6 - Projects:', parsedData.projects.length, 'projects found');
-      
-    } catch (parseError) {
-      console.error('=== JSON PARSING FAILED ===');
-      console.error('Parse error:', parseError);
-      console.error('Raw AI response was:', aiResponse);
-      throw new Error(`Failed to parse AI response: ${parseError.message}`);
-    }
-
-    // Validate that we extracted meaningful data
-    const hasBasicInfo = parsedData.full_name || parsedData.email || parsedData.skills.length > 0 || 
-                        parsedData.work_experience.length > 0 || parsedData.education.length > 0;
+    // Parse and validate the response
+    const rawParsedData = parseAIResponse(aiResponse);
+    const parsedData = validateParsedData(rawParsedData);
+    
+    // Check if we extracted meaningful data
+    const hasBasicInfo = parsedData.full_name || parsedData.email || 
+                        parsedData.skills.length > 0 || 
+                        parsedData.work_experience.length > 0 || 
+                        parsedData.education.length > 0;
     
     if (!hasBasicInfo) {
-      console.warn('=== WARNING: LIMITED DATA EXTRACTED ===');
-      console.warn('Proceeding to save minimal data found');
+      console.warn('=== WARNING: NO MEANINGFUL DATA EXTRACTED ===');
     } else {
-      console.log('=== SUCCESS: MEANINGFUL DATA EXTRACTED ===');
+      console.log('=== SUCCESS: DATA EXTRACTED SUCCESSFULLY ===');
     }
 
     // Update resume with parsed data
@@ -469,27 +491,19 @@ serve(async (req) => {
       throw new Error(`Failed to save parsed data: ${updateError.message}`);
     }
 
-    console.log('=== RESUME PARSING COMPLETED SUCCESSFULLY ===');
+    console.log('=== PARSING COMPLETED SUCCESSFULLY ===');
 
     return new Response(JSON.stringify({ 
       success: true, 
       parsedData,
-      checkpoints: {
-        name: !!parsedData.full_name,
-        contact: !!(parsedData.email || parsedData.phone_number),
-        skills: parsedData.skills.length,
-        experience: parsedData.work_experience.length,
-        education: parsedData.education.length,
-        projects: parsedData.projects.length
-      },
-      message: 'Resume parsed successfully with structured procedure' 
+      message: 'Resume parsed successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('=== RESUME PARSING FAILED ===');
-    console.error('Error details:', error);
+    console.error('=== PARSING FAILED ===');
+    console.error('Error:', error.message);
     
     // Update status to error
     if (resumeId) {
