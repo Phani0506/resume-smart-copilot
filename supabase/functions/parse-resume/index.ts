@@ -7,47 +7,74 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simplified content extraction that preserves more text
+// Improved PDF content extraction function
 function extractResumeContent(content: string): string {
   console.log(`Original content length: ${content.length} characters`);
   
-  // Simple cleanup - remove obvious PDF junk but keep readable text
-  let cleanContent = content
-    // Remove PDF metadata and binary chunks
-    .replace(/%PDF-[\d.]+/g, '')
-    .replace(/%%EOF/g, '')
-    .replace(/obj\s*<<.*?>>\s*stream/gs, ' ')
-    .replace(/endstream\s*endobj/g, ' ')
-    .replace(/\d+\s+\d+\s+obj/g, ' ')
-    .replace(/\/[A-Z][A-Za-z0-9]*\s+/g, ' ')
-    // Clean up whitespace and special chars but keep letters/numbers
-    .replace(/[^\w\s@._-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Take first 4000 characters to stay well under token limits
-  const result = cleanContent.substring(0, 4000);
+  // For PDF files, we need to extract meaningful text from the raw content
+  let cleanContent = content;
+  
+  // Remove PDF headers and metadata
+  cleanContent = cleanContent.replace(/%PDF-[\d.]+/g, '');
+  cleanContent = cleanContent.replace(/%%EOF/g, '');
+  
+  // Remove PDF object structures but keep text content
+  cleanContent = cleanContent.replace(/\d+\s+\d+\s+obj/g, ' ');
+  cleanContent = cleanContent.replace(/endobj/g, ' ');
+  cleanContent = cleanContent.replace(/stream\s*[\s\S]*?\s*endstream/g, ' ');
+  
+  // Remove PDF commands and keep text
+  cleanContent = cleanContent.replace(/\/[A-Z][A-Za-z0-9]*\s*/g, ' ');
+  cleanContent = cleanContent.replace(/<<.*?>>/g, ' ');
+  cleanContent = cleanContent.replace(/\[.*?\]/g, ' ');
+  
+  // Extract readable text by looking for common patterns
+  const textPatterns = [
+    /[A-Za-z][A-Za-z\s]{2,}/g, // Words and phrases
+    /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, // Names (First Last)
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // Emails
+    /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, // Phone numbers
+    /\b(?:JavaScript|Python|Java|React|Node\.js|SQL|HTML|CSS|AWS|Docker|Kubernetes|Git|Angular|Vue|MongoDB|PostgreSQL|MySQL|TypeScript|PHP|C\+\+|C#|Ruby|Swift|Kotlin|Go|Rust|Scala|R|MATLAB|Tableau|Power BI|Excel|Salesforce|Adobe|Photoshop|Illustrator|AutoCAD|SolidWorks|Linux|Windows|macOS|Agile|Scrum|DevOps|CI\/CD|REST|API|GraphQL|Machine Learning|AI|Data Science|Analytics|Cloud|Azure|GCP|Terraform|Jenkins|JIRA|Confluence|Slack|Teams|Zoom|Project Management|Leadership|Communication|Problem Solving|Critical Thinking|Time Management|Teamwork|Adaptability|Creativity|Innovation|Strategic Planning|Budget Management|Risk Management|Quality Assurance|Testing|Debugging|Troubleshooting|Documentation|Training|Mentoring|Coaching|Negotiation|Sales|Marketing|Customer Service|Business Analysis|Process Improvement|Six Sigma|Lean|ITIL|PMP|Certified|Certification|Bachelor|Master|PhD|Degree|University|College|Institute|School|Education|Experience|Work|Employment|Job|Career|Professional|Skills|Technical|Soft|Hard|Core|Key|Primary|Secondary|Advanced|Intermediate|Beginner|Expert|Proficient|Familiar|Knowledge|Understanding|Expertise|Competency|Ability|Capability|Talent|Strength|Achievement|Accomplishment|Award|Recognition|Honor|Certificate|License|Accreditation)\b/gi, // Skills and keywords
+  ];
+  
+  let extractedText = '';
+  textPatterns.forEach(pattern => {
+    const matches = cleanContent.match(pattern) || [];
+    extractedText += matches.join(' ') + ' ';
+  });
+  
+  // If extraction didn't work well, fall back to simple cleaning
+  if (extractedText.length < 100) {
+    extractedText = content
+      .replace(/[^\w\s@._-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  
+  // Take first 3000 characters to stay under token limits
+  const result = extractedText.substring(0, 3000).trim();
   
   console.log(`Extracted content length: ${result.length} characters`);
-  console.log(`Sample content: ${result.substring(0, 200)}...`);
+  console.log(`Sample content: ${result.substring(0, 300)}...`);
   
   return result;
 }
 
-// Strict prompt that forces JSON output
-function createStrictPrompt(content: string): string {
-  return `You are a resume parser. Extract information from this text and return ONLY valid JSON.
+// Enhanced prompt for better parsing
+function createParsingPrompt(content: string): string {
+  return `You are a professional resume parser. Extract information from this resume text and return ONLY a valid JSON object with the exact structure shown below.
 
-RULES:
-1. You MUST return valid JSON only
-2. No explanations, no markdown, no extra text
-3. If you can't find a field, use empty string "" or empty array []
-4. Never return anything other than the JSON object
+IMPORTANT RULES:
+1. Return ONLY the JSON object, no explanations or markdown
+2. If you cannot find a field, use empty string "" or empty array []
+3. For skills, include both technical skills (programming languages, tools, software) and soft skills
+4. For work experience, include company, position, duration, and description
+5. For education, include institution, degree, field of study, and graduation year
 
-Text to parse:
+Resume text:
 ${content}
 
-Return exactly this JSON structure:
+Return this exact JSON structure:
 {
   "full_name": "",
   "email": "",
@@ -55,10 +82,30 @@ Return exactly this JSON structure:
   "linkedin_url": "",
   "location": "",
   "professional_summary": "",
-  "work_experience": [],
-  "education": [],
+  "work_experience": [
+    {
+      "company": "",
+      "position": "",
+      "duration": "",
+      "description": ""
+    }
+  ],
+  "education": [
+    {
+      "institution": "",
+      "degree": "",
+      "field_of_study": "",
+      "graduation_year": ""
+    }
+  ],
   "skills": [],
-  "projects": []
+  "projects": [
+    {
+      "name": "",
+      "description": "",
+      "technologies": []
+    }
+  ]
 }`;
 }
 
@@ -122,13 +169,18 @@ serve(async (req) => {
       throw new Error('File contains no readable text');
     }
     
-    // Extract content with simpler approach
+    // Extract meaningful content
     const extractedContent = extractResumeContent(fullContent);
-    const prompt = createStrictPrompt(extractedContent);
+    
+    if (extractedContent.length < 50) {
+      throw new Error('Could not extract meaningful content from resume');
+    }
+    
+    const prompt = createParsingPrompt(extractedContent);
 
-    console.log('Calling Groq API...');
+    console.log('Calling Groq API with enhanced prompt...');
 
-    // Call Groq API with stricter settings
+    // Call Groq API with better parameters
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -136,19 +188,19 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama3-8b-8192',
+        model: 'llama3-70b-8192',
         messages: [
           {
             role: 'system',
-            content: 'You are a JSON-only resume parser. Return only valid JSON, never any explanatory text.'
+            content: 'You are a resume parsing specialist. Return only valid JSON objects with extracted resume information. Never include explanations or formatting.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        temperature: 0,
-        max_tokens: 1000,
+        temperature: 0.1,
+        max_tokens: 2000,
         top_p: 0.1,
       }),
     });
@@ -167,21 +219,19 @@ serve(async (req) => {
     }
 
     const aiResponse = groqData.choices[0].message.content.trim();
-    console.log('AI response:', aiResponse);
+    console.log('Raw AI response:', aiResponse.substring(0, 500) + '...');
     
-    // Parse JSON response with better error handling
+    // Parse JSON response
     let parsedData;
     try {
-      // Clean the response more aggressively
+      // Clean response more thoroughly
       let jsonText = aiResponse;
       
-      // Remove any markdown or extra text
+      // Remove markdown formatting
       jsonText = jsonText.replace(/```json/gi, '');
       jsonText = jsonText.replace(/```/gi, '');
-      jsonText = jsonText.replace(/^[^{]*/g, ''); // Remove everything before first {
-      jsonText = jsonText.replace(/[^}]*$/g, ''); // Remove everything after last }
       
-      // Find the JSON object boundaries
+      // Find JSON object boundaries
       const startIndex = jsonText.indexOf('{');
       const endIndex = jsonText.lastIndexOf('}');
       
@@ -191,10 +241,10 @@ serve(async (req) => {
       
       jsonText = jsonText.substring(startIndex, endIndex + 1);
       
-      console.log('Attempting to parse JSON:', jsonText);
+      console.log('Attempting to parse JSON...');
       parsedData = JSON.parse(jsonText);
       
-      // Ensure all required fields exist with proper defaults
+      // Validate and clean parsed data
       parsedData = {
         full_name: String(parsedData.full_name || '').trim(),
         email: String(parsedData.email || '').trim(),
@@ -211,28 +261,14 @@ serve(async (req) => {
       console.log('Successfully parsed data:', {
         name: parsedData.full_name,
         email: parsedData.email,
-        skills_count: parsedData.skills.length
+        skills_count: parsedData.skills.length,
+        work_experience_count: parsedData.work_experience.length
       });
       
     } catch (parseError) {
       console.error('JSON parsing failed:', parseError);
       console.error('Raw AI response was:', aiResponse);
-      
-      // Fallback: create empty structure
-      parsedData = {
-        full_name: '',
-        email: '',
-        phone_number: '',
-        linkedin_url: '',
-        location: '',
-        professional_summary: '',
-        work_experience: [],
-        education: [],
-        skills: [],
-        projects: []
-      };
-      
-      console.log('Using fallback empty structure');
+      throw new Error('Failed to parse AI response as JSON');
     }
 
     // Update resume with parsed data

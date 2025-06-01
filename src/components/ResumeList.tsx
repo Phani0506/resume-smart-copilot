@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import OutreachModal from "./OutreachModal";
 import ScreeningQuestionsModal from "./ScreeningQuestionsModal";
+import ResumeViewer from "./ResumeViewer";
 
 interface Resume {
   id: string;
@@ -62,6 +64,7 @@ const ResumeList = () => {
   const [resumeToDelete, setResumeToDelete] = useState<Resume | null>(null);
   const [outreachModalOpen, setOutreachModalOpen] = useState(false);
   const [questionsModalOpen, setQuestionsModalOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
@@ -196,6 +199,11 @@ const ResumeList = () => {
     setOutreachModalOpen(true);
   };
 
+  const openViewer = (resume: Resume) => {
+    setSelectedResume(resume);
+    setViewerOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -323,7 +331,11 @@ const ResumeList = () => {
                     </div>
                     
                     <div className="flex items-center space-x-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => openViewer(resume)}
+                      >
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
@@ -398,6 +410,12 @@ const ResumeList = () => {
         questions={generatedQuestions}
         candidateName={selectedResume?.parsed_data?.full_name || 'Candidate'}
         loading={questionsLoading}
+      />
+
+      <ResumeViewer
+        resume={selectedResume}
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
       />
     </div>
   );
