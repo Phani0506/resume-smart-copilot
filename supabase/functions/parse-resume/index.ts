@@ -8,60 +8,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Advanced content extraction with multiple strategies
-function extractResumeContent(content: string): string {
+// Enhanced content extraction with multiple strategies
+function extractContentFromFile(rawContent: string): string {
   console.log(`=== CONTENT EXTRACTION STARTED ===`);
-  console.log(`Original content length: ${content.length} characters`);
+  console.log(`Raw content length: ${rawContent.length} characters`);
   
-  let extractedText = '';
-  let bestStrategy = '';
-  
-  // Strategy 1: Enhanced pattern-based extraction for structured data
-  console.log(`Trying Strategy 1: Pattern-based extraction...`);
-  const patterns = [
-    // Personal information
-    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}\b/g, // Full names
-    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi, // Email addresses
-    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // Phone numbers
-    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9-]+/gi, // LinkedIn URLs
-    
-    // Skills and technologies (comprehensive list)
-    /\b(?:JavaScript|TypeScript|Python|Java|React|Angular|Vue|Node\.js|Express|MongoDB|PostgreSQL|MySQL|Docker|Kubernetes|AWS|Azure|GCP|Git|GitHub|GitLab|HTML|CSS|SCSS|Bootstrap|Tailwind|PHP|Ruby|C\+\+|C#|Swift|Kotlin|Flutter|React Native|Spring|Django|Flask|Laravel|WordPress|Shopify|Figma|Adobe|Photoshop|Illustrator|InDesign|Sketch|SQL|NoSQL|Redis|Elasticsearch|Jenkins|CI\/CD|DevOps|Linux|Windows|MacOS|Office|Excel|PowerPoint|Word|Slack|Jira|Trello|Asana|Salesforce|HubSpot|Analytics|SEO|SEM|PPC|Social Media|Marketing|Sales|Leadership|Management|Communication|Problem Solving|Team Work|Project Management|Agile|Scrum|Kanban|API|REST|GraphQL|Microservices|Machine Learning|AI|Data Science|Business Intelligence|Tableau|Power BI|Pandas|NumPy|TensorFlow|PyTorch)\b/gi,
-    
-    // Job titles and positions
-    /\b(?:Software Engineer|Developer|Frontend|Backend|Full Stack|Data Scientist|Product Manager|Project Manager|Designer|UX|UI|DevOps|QA|Tester|Analyst|Consultant|Director|Manager|Lead|Senior|Junior|Intern|CEO|CTO|VP|Head of|Marketing|Sales|Operations|Finance|HR|Recruiter|Architect|Specialist|Coordinator|Assistant|Associate|Executive)\b/gi,
-    
-    // Education and institutions
-    /\b(?:University|College|Institute|School|Academy|Bachelor|Master|PhD|Degree|Graduate|Undergraduate|Diploma|Certificate|MBA|MS|BS|BA|MA|PhD|Computer Science|Engineering|Business|Marketing|Finance|Economics|Mathematics|Statistics|Physics|Chemistry|Biology|Information Technology|Software Engineering)\b/gi,
-    
-    // Companies and experience indicators
-    /\b(?:Company|Corporation|Inc|LLC|Ltd|Group|Technologies|Solutions|Systems|Services|Consulting|Agency|Studio|Lab|Startup|Enterprise|Global|International|years?|months?|experience|worked|developed|managed|led|created|built|designed|implemented|achieved|improved|increased|decreased|responsible|collaborated|coordinated|delivered|executed)\b/gi,
-    
-    // Dates and time periods
-    /\b(?:20\d{2}|19\d{2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\b/gi,
-    
-    // Complete sentences and phrases
-    /[A-Z][^.!?]*[.!?]/g,
-    /\b[A-Za-z]+(?:\s+[A-Za-z]+){2,}\b/g,
-  ];
-  
-  let strategy1Text = '';
-  patterns.forEach((pattern, index) => {
-    const matches = content.match(pattern) || [];
-    console.log(`Pattern ${index + 1} found ${matches.length} matches`);
-    if (matches.length > 0) {
-      strategy1Text += matches.join(' ') + ' ';
-    }
-  });
-  
-  if (strategy1Text.length > 500) {
-    extractedText = strategy1Text;
-    bestStrategy = 'Pattern-based extraction';
+  if (!rawContent || rawContent.length < 10) {
+    throw new Error('File contains no readable content');
   }
   
-  // Strategy 2: PDF structure cleaning and text extraction
-  console.log(`Trying Strategy 2: PDF structure cleaning...`);
-  const strategy2Text = content
+  let cleanedContent = '';
+  
+  // Strategy 1: Remove PDF metadata and clean structure
+  cleanedContent = rawContent
     .replace(/%PDF-[\d.]+/g, ' ')
     .replace(/%%EOF/g, ' ')
     .replace(/\d+\s+\d+\s+obj/g, ' ')
@@ -74,67 +33,52 @@ function extractResumeContent(content: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   
-  if (strategy2Text.length > extractedText.length && strategy2Text.length > 500) {
-    extractedText = strategy2Text;
-    bestStrategy = 'PDF structure cleaning';
-  }
-  
-  // Strategy 3: Character-by-character filtering for corrupted PDFs
-  console.log(`Trying Strategy 3: Character filtering...`);
-  let strategy3Text = '';
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-    const code = char.charCodeAt(0);
+  // Strategy 2: Extract readable characters only
+  if (cleanedContent.length < 200) {
+    let charFiltered = '';
+    for (let i = 0; i < rawContent.length; i++) {
+      const char = rawContent[i];
+      const code = char.charCodeAt(0);
+      
+      if ((code >= 32 && code <= 126) || 
+          (code >= 160 && code <= 255) || 
+          char === '\n' || char === '\r' || char === '\t' ||
+          /[a-zA-Z0-9\s@._\-]/.test(char)) {
+        charFiltered += char;
+      }
+    }
     
-    if ((code >= 32 && code <= 126) || 
-        (code >= 160 && code <= 255) || 
-        char === '\n' || char === '\r' || char === '\t' ||
-        (code > 255 && /[a-zA-Z0-9\s]/.test(char))) {
-      strategy3Text += char;
+    charFiltered = charFiltered.replace(/\s+/g, ' ').trim();
+    if (charFiltered.length > cleanedContent.length) {
+      cleanedContent = charFiltered;
     }
   }
   
-  strategy3Text = strategy3Text.replace(/\s+/g, ' ').trim();
-  
-  if (strategy3Text.length > extractedText.length && strategy3Text.length > 500) {
-    extractedText = strategy3Text;
-    bestStrategy = 'Character filtering';
+  // Final validation
+  if (cleanedContent.length < 50) {
+    throw new Error('Insufficient readable content extracted from file');
   }
   
-  // Strategy 4: Raw text extraction as fallback
-  if (extractedText.length < 200) {
-    const fallbackText = content
-      .replace(/\0/g, ' ')
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    
-    if (fallbackText.length > 100) {
-      extractedText = fallbackText;
-      bestStrategy = 'Raw text extraction';
-    }
-  }
-  
-  const result = extractedText.substring(0, 8000).trim();
-  
-  console.log(`=== EXTRACTION COMPLETED ===`);
-  console.log(`Best strategy: ${bestStrategy}`);
-  console.log(`Final content length: ${result.length} characters`);
-  console.log(`Sample: ${result.substring(0, 300)}...`);
+  const result = cleanedContent.substring(0, 6000).trim();
+  console.log(`Extracted content length: ${result.length} characters`);
+  console.log(`Sample: ${result.substring(0, 200)}...`);
   
   return result;
 }
 
-// Step-by-step AI parsing with multiple attempts
-async function parseResumeWithAI(content: string, groqApiKey: string): Promise<any> {
+// Robust AI parsing with exponential backoff
+async function parseWithAI(content: string, groqApiKey: string): Promise<any> {
   console.log(`=== AI PARSING STARTED ===`);
   
-  // Step 1: Parse basic information
-  const basicInfoPrompt = `Extract ONLY the basic contact information from this resume text. Return ONLY valid JSON with no additional text.
+  const systemPrompt = `You are an expert resume parser. Extract information from resume text and return ONLY valid JSON. No explanations, no markdown formatting, just clean JSON.`;
+  
+  // Step 1: Extract basic contact information
+  console.log(`Step 1: Extracting contact information...`);
+  const contactPrompt = `Extract contact information from this resume text:
 
-Resume text: ${content.substring(0, 3000)}
+${content.substring(0, 2000)}
 
-Return this exact JSON structure:
+Return ONLY this JSON structure (fill empty string if not found):
 {
   "full_name": "",
   "email": "",
@@ -143,29 +87,29 @@ Return this exact JSON structure:
   "location": ""
 }`;
 
-  console.log(`Step 1: Extracting basic information...`);
-  const basicInfo = await callGroqAPI(basicInfoPrompt, groqApiKey);
-  console.log(`Basic info extracted:`, basicInfo);
+  const contactInfo = await callGroqWithRetry(contactPrompt, groqApiKey, systemPrompt);
+  console.log(`Contact info:`, contactInfo);
 
-  // Step 2: Parse skills
-  const skillsPrompt = `Extract ALL skills, technologies, and competencies from this resume text. Return ONLY a JSON array of skills.
-
-Resume text: ${content}
-
-Return ONLY a JSON array like this:
-["JavaScript", "Python", "React", "Node.js", "SQL", "Project Management"]`;
-
+  // Step 2: Extract skills
   console.log(`Step 2: Extracting skills...`);
-  const skillsResponse = await callGroqAPI(skillsPrompt, groqApiKey);
-  const skills = Array.isArray(skillsResponse) ? skillsResponse : [];
-  console.log(`Skills extracted:`, skills);
+  const skillsPrompt = `Extract ALL technical skills, tools, and technologies from this resume:
 
-  // Step 3: Parse work experience
-  const experiencePrompt = `Extract ALL work experience from this resume text. Return ONLY valid JSON array.
+${content}
 
-Resume text: ${content}
+Return ONLY a JSON array of skills like:
+["JavaScript", "Python", "React", "Node.js", "AWS"]`;
 
-Return this exact JSON structure:
+  const skillsResult = await callGroqWithRetry(skillsPrompt, groqApiKey, systemPrompt);
+  const skills = Array.isArray(skillsResult) ? skillsResult : [];
+  console.log(`Skills found: ${skills.length}`);
+
+  // Step 3: Extract work experience
+  console.log(`Step 3: Extracting work experience...`);
+  const experiencePrompt = `Extract work experience from this resume:
+
+${content}
+
+Return ONLY this JSON structure:
 [
   {
     "company": "",
@@ -175,17 +119,17 @@ Return this exact JSON structure:
   }
 ]`;
 
-  console.log(`Step 3: Extracting work experience...`);
-  const workExperience = await callGroqAPI(experiencePrompt, groqApiKey);
-  const experience = Array.isArray(workExperience) ? workExperience : [];
-  console.log(`Experience extracted:`, experience);
+  const experienceResult = await callGroqWithRetry(experiencePrompt, groqApiKey, systemPrompt);
+  const experience = Array.isArray(experienceResult) ? experienceResult : [];
+  console.log(`Experience entries: ${experience.length}`);
 
-  // Step 4: Parse education
-  const educationPrompt = `Extract ALL education information from this resume text. Return ONLY valid JSON array.
+  // Step 4: Extract education
+  console.log(`Step 4: Extracting education...`);
+  const educationPrompt = `Extract education information from this resume:
 
-Resume text: ${content}
+${content}
 
-Return this exact JSON structure:
+Return ONLY this JSON structure:
 [
   {
     "institution": "",
@@ -195,65 +139,59 @@ Return this exact JSON structure:
   }
 ]`;
 
-  console.log(`Step 4: Extracting education...`);
-  const educationResponse = await callGroqAPI(educationPrompt, groqApiKey);
-  const education = Array.isArray(educationResponse) ? educationResponse : [];
-  console.log(`Education extracted:`, education);
+  const educationResult = await callGroqWithRetry(educationPrompt, groqApiKey, systemPrompt);
+  const education = Array.isArray(educationResult) ? educationResult : [];
+  console.log(`Education entries: ${education.length}`);
 
-  // Step 5: Parse projects
-  const projectsPrompt = `Extract ANY projects or portfolios from this resume text. Return ONLY valid JSON array.
+  // Step 5: Generate professional summary
+  console.log(`Step 5: Generating summary...`);
+  const summaryPrompt = `Based on this resume, write a 2-3 sentence professional summary:
 
-Resume text: ${content}
+${content.substring(0, 1500)}
 
-Return this exact JSON structure:
-[
-  {
-    "name": "",
-    "description": "",
-    "technologies": []
-  }
-]`;
+Return ONLY the summary text, no JSON.`;
 
-  console.log(`Step 5: Extracting projects...`);
-  const projectsResponse = await callGroqAPI(projectsPrompt, groqApiKey);
-  const projects = Array.isArray(projectsResponse) ? projectsResponse : [];
-  console.log(`Projects extracted:`, projects);
+  const summaryResult = await callGroqWithRetry(summaryPrompt, groqApiKey, systemPrompt);
+  const professionalSummary = typeof summaryResult === 'string' ? summaryResult : '';
 
-  // Step 6: Generate professional summary
-  const summaryPrompt = `Based on this resume content, write a 2-3 sentence professional summary. Return ONLY the summary text, no JSON.
-
-Resume text: ${content.substring(0, 2000)}`;
-
-  console.log(`Step 6: Generating professional summary...`);
-  const summaryResponse = await callGroqAPI(summaryPrompt, groqApiKey);
-  const professionalSummary = typeof summaryResponse === 'string' ? summaryResponse : '';
-  console.log(`Summary generated:`, professionalSummary);
-
-  // Combine all extracted data
+  // Combine all data
   const finalData = {
-    full_name: basicInfo?.full_name || '',
-    email: basicInfo?.email || '',
-    phone_number: basicInfo?.phone_number || '',
-    linkedin_url: basicInfo?.linkedin_url || '',
-    location: basicInfo?.location || '',
-    professional_summary: professionalSummary.substring(0, 500),
-    work_experience: experience,
-    education: education,
-    skills: skills.slice(0, 50),
-    projects: projects
+    full_name: (contactInfo?.full_name || '').trim(),
+    email: (contactInfo?.email || '').trim(),
+    phone_number: (contactInfo?.phone_number || '').trim(),
+    linkedin_url: (contactInfo?.linkedin_url || '').trim(),
+    location: (contactInfo?.location || '').trim(),
+    professional_summary: professionalSummary.substring(0, 500).trim(),
+    work_experience: experience.slice(0, 10),
+    education: education.slice(0, 5),
+    skills: skills.slice(0, 30),
+    projects: []
   };
 
-  console.log(`=== AI PARSING COMPLETED ===`);
-  console.log(`Final extracted data:`, JSON.stringify(finalData, null, 2));
-  
+  console.log(`=== PARSING COMPLETED ===`);
+  console.log(`Final data summary:`, {
+    name: finalData.full_name ? 'Found' : 'Not found',
+    email: finalData.email ? 'Found' : 'Not found',
+    skills_count: finalData.skills.length,
+    experience_count: finalData.work_experience.length,
+    education_count: finalData.education.length
+  });
+
   return finalData;
 }
 
-// Enhanced Groq API call with robust error handling
-async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
+// Enhanced Groq API call with exponential backoff and circuit breaker
+async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPrompt: string, maxRetries = 5): Promise<any> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Groq API attempt ${attempt}/${maxRetries}`);
+      
+      // Exponential backoff delay
+      if (attempt > 1) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 2), 10000);
+        console.log(`Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
       
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -262,11 +200,11 @@ async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama3-70b-8192',
+          model: 'llama3-8b-8192',
           messages: [
             {
               role: 'system',
-              content: 'You are an expert resume parser. Extract information accurately and return ONLY the requested JSON format. No explanations, no markdown, just clean JSON or the requested format.'
+              content: systemPrompt
             },
             {
               role: 'user',
@@ -274,13 +212,27 @@ async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): 
             }
           ],
           temperature: 0.1,
-          max_tokens: 2000,
+          max_tokens: 1500,
           top_p: 0.1,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Groq API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Groq API error ${response.status}: ${errorText}`);
+        
+        if (response.status === 429) {
+          // Rate limit - continue to retry
+          console.log(`Rate limited, will retry...`);
+          continue;
+        } else if (response.status >= 500) {
+          // Server error - retry
+          console.log(`Server error, will retry...`);
+          continue;
+        } else {
+          // Client error - don't retry
+          throw new Error(`Groq API client error: ${response.status}`);
+        }
       }
 
       const data = await response.json();
@@ -290,53 +242,43 @@ async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): 
         throw new Error('No content in Groq response');
       }
 
-      console.log(`Raw AI response: ${content.substring(0, 200)}...`);
+      console.log(`AI Response: ${content.substring(0, 100)}...`);
 
-      // Try to parse as JSON first
+      // Try to parse as JSON
       try {
-        return JSON.parse(content.trim());
-      } catch (jsonError) {
-        // If not JSON, clean and try again
-        let cleanedContent = content.trim();
-        
-        // Remove markdown formatting
-        cleanedContent = cleanedContent.replace(/```json\s*/gi, '');
-        cleanedContent = cleanedContent.replace(/```\s*/gi, '');
+        const cleanedContent = content
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*/gi, '')
+          .trim();
         
         // Find JSON boundaries
-        const jsonStart = cleanedContent.indexOf('{') !== -1 ? cleanedContent.indexOf('{') : cleanedContent.indexOf('[');
-        const jsonEnd = cleanedContent.lastIndexOf('}') !== -1 ? cleanedContent.lastIndexOf('}') : cleanedContent.lastIndexOf(']');
+        const jsonStart = cleanedContent.search(/[{\[]/);
+        const jsonEnd = cleanedContent.search(/[}\]](?!.*[}\]])/) + 1;
         
-        if (jsonStart !== -1 && jsonEnd !== -1 && jsonStart < jsonEnd) {
-          cleanedContent = cleanedContent.substring(jsonStart, jsonEnd + 1);
-          
-          try {
-            return JSON.parse(cleanedContent);
-          } catch (secondJsonError) {
-            console.log(`JSON parsing failed, returning raw content: ${cleanedContent}`);
-            return cleanedContent; // Return raw text for summary
-          }
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+          const jsonStr = cleanedContent.substring(jsonStart, jsonEnd);
+          return JSON.parse(jsonStr);
+        } else {
+          // Not JSON - return as string for summary
+          return cleanedContent;
         }
-        
-        return content; // Return raw content if no JSON found
+      } catch (parseError) {
+        console.log(`JSON parse failed, returning raw content`);
+        return content.trim();
       }
       
     } catch (error) {
-      console.error(`Groq API attempt ${attempt} failed:`, error.message);
+      console.error(`Attempt ${attempt} failed:`, error.message);
       
       if (attempt === maxRetries) {
-        throw error;
+        throw new Error(`All ${maxRetries} attempts failed. Last error: ${error.message}`);
       }
-      
-      const delay = Math.min(2000 * attempt, 8000);
-      console.log(`Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 }
 
-// Validate and clean parsed data
-function validateParsedData(data: any): any {
+// Data validation and cleaning
+function validateAndCleanData(data: any): any {
   console.log(`=== DATA VALIDATION STARTED ===`);
   
   const cleaned = {
@@ -361,7 +303,8 @@ function validateParsedData(data: any): any {
         duration: String(exp.duration || '').trim(),
         description: String(exp.description || '').trim()
       }))
-      .filter((exp: any) => exp.company || exp.position);
+      .filter((exp: any) => exp.company || exp.position)
+      .slice(0, 10);
   }
   
   // Clean education
@@ -373,38 +316,25 @@ function validateParsedData(data: any): any {
         field_of_study: String(edu.field_of_study || '').trim(),
         graduation_year: String(edu.graduation_year || '').trim()
       }))
-      .filter((edu: any) => edu.institution || edu.degree);
+      .filter((edu: any) => edu.institution || edu.degree)
+      .slice(0, 5);
   }
   
   // Clean skills
   if (Array.isArray(data.skills)) {
     cleaned.skills = data.skills
       .map((skill: any) => String(skill).trim())
-      .filter((skill: string) => skill.length > 0)
-      .slice(0, 50);
+      .filter((skill: string) => skill.length > 0 && skill.length < 50)
+      .slice(0, 30);
   }
   
-  // Clean projects
-  if (Array.isArray(data.projects)) {
-    cleaned.projects = data.projects
-      .map((project: any) => ({
-        name: String(project.name || '').trim(),
-        description: String(project.description || '').trim(),
-        technologies: Array.isArray(project.technologies) 
-          ? project.technologies.map((tech: any) => String(tech).trim()).filter((tech: string) => tech.length > 0)
-          : []
-      }))
-      .filter((project: any) => project.name || project.description);
-  }
-  
-  console.log(`=== VALIDATION RESULTS ===`);
-  console.log(`Name: ${cleaned.full_name ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`Email: ${cleaned.email ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`Phone: ${cleaned.phone_number ? 'FOUND' : 'NOT FOUND'}`);
-  console.log(`Skills: ${cleaned.skills.length} found`);
-  console.log(`Experience: ${cleaned.work_experience.length} positions`);
-  console.log(`Education: ${cleaned.education.length} entries`);
-  console.log(`Projects: ${cleaned.projects.length} found`);
+  console.log(`Validation complete:`, {
+    name: cleaned.full_name ? 'Valid' : 'Missing',
+    email: cleaned.email ? 'Valid' : 'Missing',
+    skills: cleaned.skills.length,
+    experience: cleaned.work_experience.length,
+    education: cleaned.education.length
+  });
   
   return cleaned;
 }
@@ -414,27 +344,26 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let requestBody;
-  let resumeId;
+  let resumeId: string | undefined;
 
   try {
-    requestBody = await req.json();
-    resumeId = requestBody.resumeId;
+    const { resumeId: reqResumeId } = await req.json();
+    resumeId = reqResumeId;
     
     console.log('=== RESUME PARSING STARTED ===');
-    console.log(`Processing resume ID: ${resumeId}`);
+    console.log(`Resume ID: ${resumeId}`);
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const groqApiKey = Deno.env.get('GROQ_API_KEY')!;
     
     if (!groqApiKey) {
-      throw new Error('GROQ_API_KEY is not configured');
+      throw new Error('GROQ_API_KEY not configured');
     }
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get resume from database
+    // Get resume record
     const { data: resume, error: resumeError } = await supabase
       .from('resumes')
       .select('*')
@@ -446,9 +375,9 @@ serve(async (req) => {
       throw new Error(`Resume not found: ${resumeError.message}`);
     }
 
-    console.log(`Resume found: ${resume.file_name}`);
+    console.log(`Processing: ${resume.file_name}`);
 
-    // Download file from storage
+    // Download file
     const { data: fileData, error: fileError } = await supabase.storage
       .from('user-resumes')
       .download(resume.storage_path);
@@ -458,52 +387,32 @@ serve(async (req) => {
       throw new Error(`File download failed: ${fileError.message}`);
     }
 
-    // Convert file to text
-    let fullContent: string;
-    try {
-      fullContent = await fileData.text();
-    } catch (textError) {
-      console.error('Text extraction error:', textError);
-      throw new Error('Failed to extract text from file');
-    }
+    // Extract text content
+    const rawContent = await fileData.text();
+    const extractedContent = extractContentFromFile(rawContent);
     
-    if (!fullContent || fullContent.trim().length < 10) {
-      throw new Error('File contains no readable text');
-    }
+    // Parse with AI
+    const parsedData = await parseWithAI(extractedContent, groqApiKey);
     
-    // Extract content with multiple strategies
-    const extractedContent = extractResumeContent(fullContent);
+    // Validate and clean
+    const cleanedData = validateAndCleanData(parsedData);
     
-    if (extractedContent.length < 100) {
-      console.error('Insufficient content extracted:', extractedContent.substring(0, 200));
-      throw new Error('Could not extract meaningful content from resume');
-    }
+    // Check if we got meaningful data
+    const hasData = cleanedData.full_name || 
+                   cleanedData.email || 
+                   cleanedData.skills.length > 0 || 
+                   cleanedData.work_experience.length > 0;
     
-    // Parse with AI step by step
-    const parsedData = await parseResumeWithAI(extractedContent, groqApiKey);
-    
-    // Validate and clean the data
-    const cleanedData = validateParsedData(parsedData);
-    
-    // Check if we extracted meaningful data
-    const hasBasicInfo = cleanedData.full_name || cleanedData.email || 
-                        cleanedData.skills.length > 0 || 
-                        cleanedData.work_experience.length > 0 || 
-                        cleanedData.education.length > 0;
-    
-    if (!hasBasicInfo) {
-      console.warn('=== WARNING: LIMITED DATA EXTRACTED ===');
-      console.warn('This may be due to poor file quality or unusual formatting');
-    } else {
-      console.log('=== SUCCESS: COMPREHENSIVE DATA EXTRACTED ===');
+    if (!hasData) {
+      console.warn('WARNING: Limited data extracted');
     }
 
-    // Update resume with parsed data
+    // Update database
     const { error: updateError } = await supabase
       .from('resumes')
       .update({
         parsed_data: cleanedData,
-        skills_extracted: cleanedData.skills || [],
+        skills_extracted: cleanedData.skills,
         upload_status: 'parsed_success'
       })
       .eq('id', resumeId);
@@ -521,7 +430,7 @@ serve(async (req) => {
       skillsCount: cleanedData.skills.length,
       experienceCount: cleanedData.work_experience.length,
       educationCount: cleanedData.education.length,
-      message: 'Resume parsed successfully with comprehensive data extraction'
+      message: 'Resume parsed successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

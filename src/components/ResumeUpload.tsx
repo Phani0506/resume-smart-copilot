@@ -1,7 +1,8 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload, FileText, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,6 +13,7 @@ interface UploadedFile {
   status: 'uploading' | 'uploaded' | 'parsing' | 'parsed' | 'error';
   id?: string;
   errorMessage?: string;
+  retryCount?: number;
 }
 
 const ResumeUpload = () => {
@@ -42,9 +44,9 @@ const ResumeUpload = () => {
   const isValidFileType = (file: File) => {
     const validTypes = [
       'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-      'application/msword', // .doc
-      'text/plain' // .txt for testing
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'text/plain'
     ];
     
     const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
@@ -60,7 +62,7 @@ const ResumeUpload = () => {
       console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
       
       if (isValidFileType(file)) {
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        if (file.size > 10 * 1024 * 1024) {
           toast({
             title: "File too large",
             description: `${file.name} is larger than 10MB. Please upload a smaller file.`,
@@ -79,7 +81,7 @@ const ResumeUpload = () => {
     });
   };
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (file: File, isRetry = false) => {
     if (!user) {
       toast({
         title: "Authentication required",
@@ -93,22 +95,24 @@ const ResumeUpload = () => {
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
       status: 'uploading',
+      retryCount: 0,
     };
 
-    setUploadedFiles(prev => [...prev, fileData]);
+    if (!isRetry) {
+      setUploadedFiles(prev => [...prev, fileData]);
+    }
 
     try {
-      // Create unique filename with proper extension
+      // Create unique filename
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size, 'Path:', filePath);
+      console.log('Uploading file:', file.name, 'Path:', filePath);
 
-      // Upload to Supabase Storage with proper content type detection
+      // Determine content type
       let contentType = file.type;
       if (!contentType || contentType === 'application/octet-stream') {
-        // Fallback content type detection based on extension
         const ext = fileExt.toLowerCase();
         switch (ext) {
           case 'pdf':
@@ -128,6 +132,7 @@ const ResumeUpload = () => {
         }
       }
 
+      // Upload to storage
       const { data: storageData, error: storageError } = await supabase.storage
         .from('user-resumes')
         .upload(filePath, file, {
@@ -143,7 +148,7 @@ const ResumeUpload = () => {
 
       console.log('File uploaded to storage:', storageData);
 
-      // Insert record to database
+      // Create database record
       const { data: resumeData, error: dbError } = await supabase
         .from('resumes')
         .insert({
@@ -169,37 +174,39 @@ const ResumeUpload = () => {
         )
       );
 
-      // Start parsing
+      // Start parsing with delay
       setUploadedFiles(prev => 
         prev.map(f => 
           f.name === file.name ? { ...f, status: 'parsing' } : f
         )
       );
 
-      // Add delay before parsing to ensure file is fully uploaded
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      console.log('Starting AI parsing for resume:', resumeData.id);
+      console.log('Starting parsing for resume:', resumeData.id);
 
-      // Call parsing edge function
-      const { data: parseResult, error: parseError } = await supabase.functions.invoke('parse-resume', {
+      // Call parsing function with timeout
+      const parsePromise = supabase.functions.invoke('parse-resume', {
         body: { resumeId: resumeData.id }
       });
 
-      console.log('Parse result:', parseResult, 'Parse error:', parseError);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Parsing timeout')), 60000)
+      );
+
+      const { data: parseResult, error: parseError } = await Promise.race([
+        parsePromise,
+        timeoutPromise
+      ]) as any;
 
       if (parseError) {
-        console.error('Parse function error:', parseError);
-        throw new Error(`AI parsing failed: ${parseError.message}`);
+        console.error('Parse error:', parseError);
+        throw new Error(`Parsing failed: ${parseError.message}`);
       }
 
       if (parseResult?.error) {
         console.error('Parse result error:', parseResult.error);
-        throw new Error(`AI parsing failed: ${parseResult.error}`);
-      }
-
-      if (!parseResult?.success) {
-        throw new Error('AI parsing completed but no data was extracted');
+        throw new Error(`Parsing failed: ${parseResult.error}`);
       }
 
       setUploadedFiles(prev => 
@@ -214,20 +221,35 @@ const ResumeUpload = () => {
       });
 
     } catch (error) {
-      console.error('Upload error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Upload/Parse error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       
       setUploadedFiles(prev => 
         prev.map(f => 
-          f.name === file.name ? { ...f, status: 'error', errorMessage } : f
+          f.name === file.name ? { 
+            ...f, 
+            status: 'error', 
+            errorMessage,
+            retryCount: (f.retryCount || 0) + 1
+          } : f
         )
       );
       
       toast({
-        title: "Upload failed",
-        description: errorMessage,
+        title: "Processing failed",
+        description: `${file.name}: ${errorMessage}`,
         variant: "destructive",
       });
+    }
+  };
+
+  const retryUpload = (fileName: string) => {
+    const fileInput = document.getElementById('file-input') as HTMLInputElement;
+    if (fileInput?.files) {
+      const file = Array.from(fileInput.files).find(f => f.name === fileName);
+      if (file) {
+        uploadFile(file, true);
+      }
     }
   };
 
@@ -253,13 +275,13 @@ const ResumeUpload = () => {
       case 'uploading':
         return 'Uploading to secure storage...';
       case 'uploaded':
-        return 'Uploaded - Preparing for AI parsing';
+        return 'Uploaded - Starting AI parsing...';
       case 'parsing':
-        return 'AI extracting candidate information...';
+        return 'AI extracting information...';
       case 'parsed':
-        return 'Ready for search';
+        return 'Successfully processed';
       case 'error':
-        return `Error: ${errorMessage || 'Upload failed'}`;
+        return `Error: ${errorMessage || 'Processing failed'}`;
       default:
         return '';
     }
@@ -270,7 +292,7 @@ const ResumeUpload = () => {
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Resumes</h1>
         <p className="text-gray-600">
-          Upload candidate resumes (PDF, DOCX, DOC formats) to automatically extract and analyze information with AI.
+          Upload candidate resumes (PDF, DOCX, DOC formats) for AI-powered extraction and analysis.
         </p>
       </div>
 
@@ -279,7 +301,7 @@ const ResumeUpload = () => {
         <CardHeader>
           <CardTitle>Upload Resume Files</CardTitle>
           <CardDescription>
-            Drag and drop PDF, DOCX, or DOC files, or click to browse. Files will be automatically processed with AI. Maximum file size: 10MB.
+            Drag and drop files or click to browse. Maximum file size: 10MB.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -323,9 +345,9 @@ const ResumeUpload = () => {
       {uploadedFiles.length > 0 && (
         <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
-            <CardTitle>Upload Progress</CardTitle>
+            <CardTitle>Processing Status</CardTitle>
             <CardDescription>
-              Track the upload and AI processing status of your resume files.
+              Track upload and AI processing progress.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -339,11 +361,23 @@ const ResumeUpload = () => {
                       <p className="text-sm text-gray-500">{file.size}</p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-3">
                     {getStatusIcon(file.status)}
-                    <span className="text-sm font-medium text-gray-700">
-                      {getStatusText(file.status, file.errorMessage)}
-                    </span>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-700">
+                        {getStatusText(file.status, file.errorMessage)}
+                      </p>
+                      {file.status === 'error' && file.retryCount && file.retryCount < 3 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => retryUpload(file.name)}
+                          className="mt-1"
+                        >
+                          Retry
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -355,7 +389,7 @@ const ResumeUpload = () => {
       {/* Instructions */}
       <Card className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-white">What happens next?</CardTitle>
+          <CardTitle className="text-white">Processing Steps</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -365,7 +399,7 @@ const ResumeUpload = () => {
               </div>
               <div>
                 <p className="font-medium">Secure Upload</p>
-                <p className="text-blue-100 text-sm">Files are securely uploaded to your private storage</p>
+                <p className="text-blue-100 text-sm">Files uploaded to encrypted storage</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
@@ -373,8 +407,8 @@ const ResumeUpload = () => {
                 <span className="text-xs font-semibold">2</span>
               </div>
               <div>
-                <p className="font-medium">AI Processing</p>
-                <p className="text-blue-100 text-sm">Advanced AI extracts structured data from each resume including name, skills, experience, and education</p>
+                <p className="font-medium">AI Extraction</p>
+                <p className="text-blue-100 text-sm">AI extracts name, skills, experience, and education</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
@@ -382,8 +416,8 @@ const ResumeUpload = () => {
                 <span className="text-xs font-semibold">3</span>
               </div>
               <div>
-                <p className="font-medium">Ready to Search</p>
-                <p className="text-blue-100 text-sm">Candidates become searchable using natural language queries</p>
+                <p className="font-medium">Ready for Search</p>
+                <p className="text-blue-100 text-sm">Candidates become searchable immediately</p>
               </div>
             </div>
           </div>
