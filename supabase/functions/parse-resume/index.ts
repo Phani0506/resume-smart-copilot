@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -62,51 +63,54 @@ function extractContentFromFile(rawContent: string): string {
     throw new Error('Insufficient readable content extracted from file');
   }
   
-  const result = cleanedContent.substring(0, 10000).trim();
+  const result = cleanedContent.substring(0, 12000).trim();
   console.log(`Extracted content length: ${result.length} characters`);
-  console.log(`Sample: ${result.substring(0, 500)}...`);
+  console.log(`Sample: ${result.substring(0, 300)}...`);
   
   return result;
 }
 
-// Enhanced AI parsing with structured approach
+// Enhanced AI parsing with ultra-strict JSON-only prompt
 async function parseWithAI(content: string, groqApiKey: string): Promise<any> {
   console.log(`=== AI PARSING STARTED ===`);
   
-  const systemPrompt = `You are an expert resume parser. Extract information from the resume text and return ONLY a valid JSON object with NO additional text, explanations, or markdown formatting.
+  // Ultra-strict system prompt that forces JSON output
+  const systemPrompt = `You are a resume parsing API that outputs ONLY valid JSON. You MUST respond with a JSON object and absolutely nothing else - no explanations, no text, no markdown formatting, no conversational responses.
 
 CRITICAL RULES:
-1. Return ONLY the JSON object - no introductory text, no explanations, no markdown
-2. If information is missing, use null for strings or empty arrays []
-3. Do NOT invent or hallucinate any information
-4. Ensure all dates are in readable format (e.g., "January 2020", "Jan 2020", "01/2020")
-5. Extract ALL skills mentioned (technical, soft skills, tools, languages, frameworks)`;
+1. Your response MUST start with { and end with }
+2. Return ONLY valid JSON - no other text whatsoever
+3. Never say things like "Unfortunately" or "I cannot find" - just return the JSON structure with null/empty values
+4. If information is missing, use null for strings/objects or [] for arrays
+5. Never explain what you're doing - just return the JSON
+6. The JSON must be parseable by JSON.parse()`;
 
-  const extractionPrompt = `Parse this resume text and extract the information into the exact JSON format below.
+  // Main extraction prompt with explicit JSON template
+  const extractionPrompt = `Extract information from this resume and return ONLY the JSON object below with the extracted data. Fill in missing fields with null or [].
 
 RESUME TEXT:
 ${content}
 
-Return ONLY this JSON structure with extracted data:
+RESPOND WITH ONLY THIS JSON STRUCTURE (no other text):
 
 {
-  "candidate_name": "Full name or null",
+  "candidate_name": "extract full name or null",
   "contact_information": {
-    "email": "email@domain.com or null",
-    "phone": "phone number or null",
-    "linkedin_url": "LinkedIn URL or null",
-    "github_url": "GitHub URL or null", 
-    "portfolio_url": "Portfolio URL or null",
-    "location": "City, State or null"
+    "email": "extract email or null",
+    "phone": "extract phone or null", 
+    "linkedin_url": "extract LinkedIn URL or null",
+    "github_url": "extract GitHub URL or null",
+    "portfolio_url": "extract portfolio URL or null",
+    "location": "extract location or null"
   },
-  "skills": ["array of skills found"],
+  "skills": ["extract", "all", "skills", "found"],
   "work_experience": [
     {
-      "job_title": "position title",
-      "company_name": "company name",
-      "start_date": "start date",
-      "end_date": "end date or Present",
-      "responsibilities_achievements": ["list of responsibilities and achievements"]
+      "job_title": "extract job title",
+      "company_name": "extract company", 
+      "start_date": "extract start date",
+      "end_date": "extract end date or Present",
+      "responsibilities_achievements": ["extract responsibilities"]
     }
   ]
 }`;
@@ -121,19 +125,25 @@ Return ONLY this JSON structure with extracted data:
   }
 }
 
-// Improved Groq API call with better rate limiting and error handling
+// Improved Groq API call with multiple model fallback strategy
 async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPrompt: string, maxRetries = 3): Promise<any> {
+  const models = ['llama3-8b-8192', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Groq API attempt ${attempt}/${maxRetries}`);
       
       // Progressive delays for retries
       if (attempt > 1) {
-        const baseDelay = 2000;
-        const delay = baseDelay * Math.pow(2, attempt - 2);
+        const delay = Math.min(5000 * Math.pow(2, attempt - 2), 30000);
         console.log(`Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
+      
+      // Try different models on different attempts
+      const modelIndex = (attempt - 1) % models.length;
+      const selectedModel = models[modelIndex];
+      console.log(`Using model: ${selectedModel}`);
       
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -142,7 +152,7 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama3-8b-8192',
+          model: selectedModel,
           messages: [
             {
               role: 'system',
@@ -154,8 +164,9 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
             }
           ],
           temperature: 0.1,
-          max_tokens: 3000,
+          max_tokens: 4000,
           top_p: 0.1,
+          stop: null,
         }),
       });
 
@@ -165,7 +176,7 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
         
         if (response.status === 429) {
           // Rate limited - wait longer before retry
-          const waitTime = attempt === 1 ? 30000 : 60000; // 30s or 60s
+          const waitTime = Math.min(15000 * attempt, 60000);
           console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
@@ -184,30 +195,37 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
         throw new Error('No content in Groq response');
       }
 
-      console.log(`Raw AI Response (first 300 chars): ${content.substring(0, 300)}...`);
+      console.log(`Raw AI Response: ${content.substring(0, 500)}...`);
 
-      // Enhanced JSON parsing
+      // Ultra-strict JSON parsing with multiple strategies
       try {
-        // Clean the response to extract pure JSON
-        let cleanedContent = content.trim();
+        // Strategy 1: Direct parsing
+        let jsonStr = content.trim();
         
-        // Remove any markdown formatting
-        cleanedContent = cleanedContent
+        // Strategy 2: Extract JSON from any surrounding text
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[0];
+        }
+        
+        // Strategy 3: Clean common issues
+        jsonStr = jsonStr
           .replace(/```json\s*/gi, '')
           .replace(/```\s*/gi, '')
           .replace(/`/g, '')
+          .replace(/^[^{]*/, '') // Remove any text before first {
+          .replace(/[^}]*$/, '') // Remove any text after last }
           .trim();
         
-        // Find JSON object boundaries
-        const openBraceIndex = cleanedContent.indexOf('{');
-        const closeBraceIndex = cleanedContent.lastIndexOf('}');
+        // Strategy 4: Fix common JSON issues
+        jsonStr = jsonStr
+          .replace(/,\s*}/g, '}') // Remove trailing commas
+          .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
+          .replace(/\n/g, ' ') // Replace newlines with spaces
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
         
-        if (openBraceIndex === -1 || closeBraceIndex === -1 || closeBraceIndex <= openBraceIndex) {
-          throw new Error('No valid JSON structure found in response');
-        }
-        
-        const jsonStr = cleanedContent.substring(openBraceIndex, closeBraceIndex + 1);
-        console.log(`Extracted JSON string: ${jsonStr.substring(0, 200)}...`);
+        console.log(`Cleaned JSON string: ${jsonStr.substring(0, 300)}...`);
         
         const parsed = JSON.parse(jsonStr);
         console.log(`Successfully parsed JSON response`);
@@ -215,24 +233,12 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
         
       } catch (parseError) {
         console.error(`JSON parse error: ${parseError.message}`);
-        console.error(`Content that failed to parse: ${content.substring(0, 1000)}`);
+        console.error(`Failed content: ${content.substring(0, 1000)}`);
         
         if (attempt === maxRetries) {
-          // Last attempt - try to create a basic structure
-          console.log('Last attempt failed, creating fallback structure');
-          return {
-            candidate_name: null,
-            contact_information: {
-              email: null,
-              phone: null,
-              linkedin_url: null,
-              github_url: null,
-              portfolio_url: null,
-              location: null
-            },
-            skills: [],
-            work_experience: []
-          };
+          // Last attempt - create a structured fallback
+          console.log('All attempts failed, creating fallback structure');
+          return createFallbackStructure();
         }
         continue;
       }
@@ -247,18 +253,9 @@ async function callGroqWithRetry(prompt: string, groqApiKey: string, systemPromp
   }
 }
 
-// Enhanced data validation with fallback handling
-function validateAndStructureData(data: any): any {
-  console.log(`=== DATA VALIDATION STARTED ===`);
-  
-  // Ensure data exists and has basic structure
-  if (!data || typeof data !== 'object') {
-    console.log('Invalid data structure, creating fallback');
-    data = {};
-  }
-  
-  // Create structured output with proper defaults
-  const structured = {
+// Create a valid fallback structure
+function createFallbackStructure(): any {
+  return {
     candidate_name: null,
     contact_information: {
       email: null,
@@ -271,23 +268,64 @@ function validateAndStructureData(data: any): any {
     skills: [],
     work_experience: []
   };
+}
+
+// Enhanced data validation with comprehensive structure checking
+function validateAndStructureData(data: any): any {
+  console.log(`=== DATA VALIDATION STARTED ===`);
+  
+  // Ensure data exists and has basic structure
+  if (!data || typeof data !== 'object') {
+    console.log('Invalid data structure, creating fallback');
+    return createFallbackStructure();
+  }
+  
+  // Create structured output with proper defaults
+  const structured = createFallbackStructure();
   
   // Safely extract candidate name
   if (data.candidate_name && typeof data.candidate_name === 'string') {
-    structured.candidate_name = data.candidate_name.trim() || null;
+    const name = data.candidate_name.trim();
+    structured.candidate_name = name.length > 0 && name.length < 100 ? name : null;
   }
   
   // Safely extract contact information
   if (data.contact_information && typeof data.contact_information === 'object') {
     const contact = data.contact_information;
-    structured.contact_information = {
-      email: (contact.email && typeof contact.email === 'string') ? contact.email.trim() || null : null,
-      phone: (contact.phone && typeof contact.phone === 'string') ? contact.phone.trim() || null : null,
-      linkedin_url: (contact.linkedin_url && typeof contact.linkedin_url === 'string') ? contact.linkedin_url.trim() || null : null,
-      github_url: (contact.github_url && typeof contact.github_url === 'string') ? contact.github_url.trim() || null : null,
-      portfolio_url: (contact.portfolio_url && typeof contact.portfolio_url === 'string') ? contact.portfolio_url.trim() || null : null,
-      location: (contact.location && typeof contact.location === 'string') ? contact.location.trim() || null : null
-    };
+    
+    // Email validation
+    if (contact.email && typeof contact.email === 'string') {
+      const email = contact.email.trim();
+      if (email.includes('@') && email.includes('.')) {
+        structured.contact_information.email = email;
+      }
+    }
+    
+    // Phone validation
+    if (contact.phone && typeof contact.phone === 'string') {
+      const phone = contact.phone.trim();
+      if (phone.length >= 10) {
+        structured.contact_information.phone = phone;
+      }
+    }
+    
+    // URL validations
+    ['linkedin_url', 'github_url', 'portfolio_url'].forEach(urlField => {
+      if (contact[urlField] && typeof contact[urlField] === 'string') {
+        const url = contact[urlField].trim();
+        if (url.length > 5) {
+          structured.contact_information[urlField] = url;
+        }
+      }
+    });
+    
+    // Location validation
+    if (contact.location && typeof contact.location === 'string') {
+      const location = contact.location.trim();
+      if (location.length > 0 && location.length < 200) {
+        structured.contact_information.location = location;
+      }
+    }
   }
   
   // Safely extract skills
@@ -296,28 +334,66 @@ function validateAndStructureData(data: any): any {
       .filter(skill => skill && typeof skill === 'string')
       .map(skill => skill.trim())
       .filter(skill => skill.length > 0 && skill.length < 100)
-      .slice(0, 50);
+      .slice(0, 50); // Limit to 50 skills
   }
   
   // Safely extract work experience
   if (Array.isArray(data.work_experience)) {
     structured.work_experience = data.work_experience
       .filter(exp => exp && typeof exp === 'object')
-      .map(exp => ({
-        job_title: (exp.job_title && typeof exp.job_title === 'string') ? exp.job_title.trim() || null : null,
-        company_name: (exp.company_name && typeof exp.company_name === 'string') ? exp.company_name.trim() || null : null,
-        start_date: (exp.start_date && typeof exp.start_date === 'string') ? exp.start_date.trim() || null : null,
-        end_date: (exp.end_date && typeof exp.end_date === 'string') ? exp.end_date.trim() || null : null,
-        responsibilities_achievements: Array.isArray(exp.responsibilities_achievements) 
-          ? exp.responsibilities_achievements
-              .filter(resp => resp && typeof resp === 'string')
-              .map(resp => resp.trim())
-              .filter(resp => resp.length > 0)
-              .slice(0, 10)
-          : []
-      }))
-      .filter(exp => exp.job_title || exp.company_name)
-      .slice(0, 15);
+      .map(exp => {
+        const experience = {
+          job_title: null,
+          company_name: null,
+          start_date: null,
+          end_date: null,
+          responsibilities_achievements: []
+        };
+        
+        // Validate job title
+        if (exp.job_title && typeof exp.job_title === 'string') {
+          const title = exp.job_title.trim();
+          if (title.length > 0 && title.length < 200) {
+            experience.job_title = title;
+          }
+        }
+        
+        // Validate company name
+        if (exp.company_name && typeof exp.company_name === 'string') {
+          const company = exp.company_name.trim();
+          if (company.length > 0 && company.length < 200) {
+            experience.company_name = company;
+          }
+        }
+        
+        // Validate dates
+        if (exp.start_date && typeof exp.start_date === 'string') {
+          const startDate = exp.start_date.trim();
+          if (startDate.length > 0 && startDate.length < 50) {
+            experience.start_date = startDate;
+          }
+        }
+        
+        if (exp.end_date && typeof exp.end_date === 'string') {
+          const endDate = exp.end_date.trim();
+          if (endDate.length > 0 && endDate.length < 50) {
+            experience.end_date = endDate;
+          }
+        }
+        
+        // Validate responsibilities
+        if (Array.isArray(exp.responsibilities_achievements)) {
+          experience.responsibilities_achievements = exp.responsibilities_achievements
+            .filter(resp => resp && typeof resp === 'string')
+            .map(resp => resp.trim())
+            .filter(resp => resp.length > 0 && resp.length < 1000)
+            .slice(0, 15); // Limit to 15 responsibilities per job
+        }
+        
+        return experience;
+      })
+      .filter(exp => exp.job_title || exp.company_name) // Keep only if has title or company
+      .slice(0, 20); // Limit to 20 work experiences
   }
   
   console.log(`Validation complete:`, {
