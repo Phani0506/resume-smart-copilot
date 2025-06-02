@@ -1,8 +1,7 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload, FileText, AlertCircle, CheckCircle } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,15 +51,11 @@ const ResumeUpload = () => {
     const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
     
-    console.log('Checking file:', file.name, 'Type:', file.type, 'Extension:', fileExtension);
-    
     return validTypes.includes(file.type) || validExtensions.includes(fileExtension);
   };
 
   const handleFiles = (files: FileList) => {
     Array.from(files).forEach(file => {
-      console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
-      
       if (isValidFileType(file)) {
         if (file.size > 10 * 1024 * 1024) {
           toast({
@@ -95,11 +90,17 @@ const ResumeUpload = () => {
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
       status: 'uploading',
-      retryCount: 0,
+      retryCount: isRetry ? (uploadedFiles.find(f => f.name === file.name)?.retryCount || 0) + 1 : 0,
     };
 
     if (!isRetry) {
       setUploadedFiles(prev => [...prev, fileData]);
+    } else {
+      setUploadedFiles(prev => 
+        prev.map(f => 
+          f.name === file.name ? { ...f, status: 'uploading', errorMessage: undefined } : f
+        )
+      );
     }
 
     try {
@@ -143,7 +144,7 @@ const ResumeUpload = () => {
 
       if (storageError) {
         console.error('Storage error:', storageError);
-        throw storageError;
+        throw new Error(`Upload failed: ${storageError.message}`);
       }
 
       console.log('File uploaded to storage:', storageData);
@@ -163,7 +164,7 @@ const ResumeUpload = () => {
 
       if (dbError) {
         console.error('Database error:', dbError);
-        throw dbError;
+        throw new Error(`Database error: ${dbError.message}`);
       }
 
       console.log('Resume record created:', resumeData);
@@ -174,24 +175,22 @@ const ResumeUpload = () => {
         )
       );
 
-      // Start parsing with delay
+      // Start parsing
       setUploadedFiles(prev => 
         prev.map(f => 
           f.name === file.name ? { ...f, status: 'parsing' } : f
         )
       );
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       console.log('Starting parsing for resume:', resumeData.id);
 
-      // Call parsing function with timeout
+      // Call parsing function with extended timeout
       const parsePromise = supabase.functions.invoke('parse-resume', {
         body: { resumeId: resumeData.id }
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Parsing timeout')), 60000)
+        setTimeout(() => reject(new Error('Parsing timeout after 2 minutes')), 120000)
       );
 
       const { data: parseResult, error: parseError } = await Promise.race([
@@ -217,7 +216,7 @@ const ResumeUpload = () => {
 
       toast({
         title: "Resume processed successfully",
-        description: `${file.name} has been uploaded and parsed. ${parseResult?.skillsCount || 0} skills extracted.`,
+        description: `${file.name} has been uploaded and parsed. ${parseResult?.skillsCount || 0} skills and ${parseResult?.experienceCount || 0} experiences extracted.`,
       });
 
     } catch (error) {
@@ -230,7 +229,7 @@ const ResumeUpload = () => {
             ...f, 
             status: 'error', 
             errorMessage,
-            retryCount: (f.retryCount || 0) + 1
+            retryCount: (f.retryCount || 0) + (isRetry ? 1 : 0)
           } : f
         )
       );
@@ -249,8 +248,18 @@ const ResumeUpload = () => {
       const file = Array.from(fileInput.files).find(f => f.name === fileName);
       if (file) {
         uploadFile(file, true);
+      } else {
+        toast({
+          title: "File not found",
+          description: "Please re-select the file to retry upload.",
+          variant: "destructive",
+        });
       }
     }
+  };
+
+  const clearFile = (fileName: string) => {
+    setUploadedFiles(prev => prev.filter(f => f.name !== fileName));
   };
 
   const getStatusIcon = (status: string) => {
@@ -277,9 +286,9 @@ const ResumeUpload = () => {
       case 'uploaded':
         return 'Uploaded - Starting AI parsing...';
       case 'parsing':
-        return 'AI extracting information...';
+        return 'AI extracting information... (this may take 1-2 minutes)';
       case 'parsed':
-        return 'Successfully processed';
+        return 'Successfully processed and ready for search';
       case 'error':
         return `Error: ${errorMessage || 'Processing failed'}`;
       default:
@@ -359,6 +368,9 @@ const ResumeUpload = () => {
                     <div>
                       <p className="font-medium text-gray-900">{file.name}</p>
                       <p className="text-sm text-gray-500">{file.size}</p>
+                      {file.retryCount && file.retryCount > 0 && (
+                        <p className="text-xs text-orange-600">Retry attempt #{file.retryCount}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
@@ -367,16 +379,29 @@ const ResumeUpload = () => {
                       <p className="text-sm font-medium text-gray-700">
                         {getStatusText(file.status, file.errorMessage)}
                       </p>
-                      {file.status === 'error' && file.retryCount && file.retryCount < 3 && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => retryUpload(file.name)}
-                          className="mt-1"
-                        >
-                          Retry
-                        </Button>
-                      )}
+                      <div className="flex items-center space-x-2 mt-1">
+                        {file.status === 'error' && file.retryCount !== undefined && file.retryCount < 3 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => retryUpload(file.name)}
+                            className="text-xs"
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            Retry
+                          </Button>
+                        )}
+                        {(file.status === 'error' || file.status === 'parsed') && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => clearFile(file.name)}
+                            className="text-xs text-gray-500"
+                          >
+                            Clear
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -408,7 +433,7 @@ const ResumeUpload = () => {
               </div>
               <div>
                 <p className="font-medium">AI Extraction</p>
-                <p className="text-blue-100 text-sm">AI extracts name, skills, experience, and education</p>
+                <p className="text-blue-100 text-sm">AI extracts name, skills, experience (1-2 min)</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
