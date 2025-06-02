@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Enhanced content extraction with multiple strategies
+// Advanced content extraction with multiple strategies
 function extractResumeContent(content: string): string {
   console.log(`=== CONTENT EXTRACTION STARTED ===`);
   console.log(`Original content length: ${content.length} characters`);
@@ -16,34 +16,32 @@ function extractResumeContent(content: string): string {
   let extractedText = '';
   let bestStrategy = '';
   
-  // Strategy 1: Enhanced pattern-based extraction
-  console.log(`Trying Strategy 1: Enhanced pattern extraction...`);
+  // Strategy 1: Enhanced pattern-based extraction for structured data
+  console.log(`Trying Strategy 1: Pattern-based extraction...`);
   const patterns = [
-    // Personal information patterns
-    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g, // Names (2-4 words)
-    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi, // Email
-    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // Phone
-    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9-]+/gi, // LinkedIn
+    // Personal information
+    /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}\b/g, // Full names
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi, // Email addresses
+    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // Phone numbers
+    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9-]+/gi, // LinkedIn URLs
     
-    // Skills and technologies
-    /\b(?:JavaScript|TypeScript|Python|Java|React|Angular|Vue|Node\.js|Express|MongoDB|PostgreSQL|MySQL|Docker|Kubernetes|AWS|Azure|GCP|Git|GitHub|GitLab|HTML|CSS|SCSS|Bootstrap|Tailwind|PHP|Ruby|C\+\+|C#|Swift|Kotlin|Flutter|React Native|Spring|Django|Flask|Laravel|WordPress|Shopify|Figma|Adobe|Photoshop|Illustrator|InDesign|Sketch|SQL|NoSQL|Redis|Elasticsearch|Jenkins|CI\/CD|DevOps|Linux|Windows|MacOS|Office|Excel|PowerPoint|Word|Slack|Jira|Trello|Asana|Salesforce|HubSpot|Analytics|SEO|SEM|PPC|Social Media|Marketing|Sales|Leadership|Management|Communication|Problem Solving|Team Work|Project Management|Agile|Scrum|Kanban)\b/gi,
+    // Skills and technologies (comprehensive list)
+    /\b(?:JavaScript|TypeScript|Python|Java|React|Angular|Vue|Node\.js|Express|MongoDB|PostgreSQL|MySQL|Docker|Kubernetes|AWS|Azure|GCP|Git|GitHub|GitLab|HTML|CSS|SCSS|Bootstrap|Tailwind|PHP|Ruby|C\+\+|C#|Swift|Kotlin|Flutter|React Native|Spring|Django|Flask|Laravel|WordPress|Shopify|Figma|Adobe|Photoshop|Illustrator|InDesign|Sketch|SQL|NoSQL|Redis|Elasticsearch|Jenkins|CI\/CD|DevOps|Linux|Windows|MacOS|Office|Excel|PowerPoint|Word|Slack|Jira|Trello|Asana|Salesforce|HubSpot|Analytics|SEO|SEM|PPC|Social Media|Marketing|Sales|Leadership|Management|Communication|Problem Solving|Team Work|Project Management|Agile|Scrum|Kanban|API|REST|GraphQL|Microservices|Machine Learning|AI|Data Science|Business Intelligence|Tableau|Power BI|Pandas|NumPy|TensorFlow|PyTorch)\b/gi,
     
     // Job titles and positions
-    /\b(?:Software Engineer|Developer|Frontend|Backend|Full Stack|Data Scientist|Product Manager|Project Manager|Designer|UX|UI|DevOps|QA|Tester|Analyst|Consultant|Director|Manager|Lead|Senior|Junior|Intern|CEO|CTO|VP|Head of|Marketing|Sales|Operations|Finance|HR|Recruiter)\b/gi,
+    /\b(?:Software Engineer|Developer|Frontend|Backend|Full Stack|Data Scientist|Product Manager|Project Manager|Designer|UX|UI|DevOps|QA|Tester|Analyst|Consultant|Director|Manager|Lead|Senior|Junior|Intern|CEO|CTO|VP|Head of|Marketing|Sales|Operations|Finance|HR|Recruiter|Architect|Specialist|Coordinator|Assistant|Associate|Executive)\b/gi,
     
-    // Education keywords
-    /\b(?:University|College|Institute|School|Academy|Bachelor|Master|PhD|Degree|Graduate|Undergraduate|Diploma|Certificate|MBA|MS|BS|BA|MA|PhD|Computer Science|Engineering|Business|Marketing|Finance|Economics|Mathematics|Statistics|Physics|Chemistry|Biology)\b/gi,
+    // Education and institutions
+    /\b(?:University|College|Institute|School|Academy|Bachelor|Master|PhD|Degree|Graduate|Undergraduate|Diploma|Certificate|MBA|MS|BS|BA|MA|PhD|Computer Science|Engineering|Business|Marketing|Finance|Economics|Mathematics|Statistics|Physics|Chemistry|Biology|Information Technology|Software Engineering)\b/gi,
     
-    // Company and experience indicators
-    /\b(?:Company|Corporation|Inc|LLC|Ltd|Group|Technologies|Solutions|Systems|Services|Consulting|Agency|Studio|Lab|Startup|Enterprise|Global|International|years?|months?|experience|worked|developed|managed|led|created|built|designed|implemented|achieved|improved|increased|decreased|responsible|collaborated|coordinated)\b/gi,
+    // Companies and experience indicators
+    /\b(?:Company|Corporation|Inc|LLC|Ltd|Group|Technologies|Solutions|Systems|Services|Consulting|Agency|Studio|Lab|Startup|Enterprise|Global|International|years?|months?|experience|worked|developed|managed|led|created|built|designed|implemented|achieved|improved|increased|decreased|responsible|collaborated|coordinated|delivered|executed)\b/gi,
     
-    // Dates and durations
+    // Dates and time periods
     /\b(?:20\d{2}|19\d{2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\b/gi,
     
-    // Complete meaningful phrases
+    // Complete sentences and phrases
     /[A-Z][^.!?]*[.!?]/g,
-    
-    // Word sequences (3+ words)
     /\b[A-Za-z]+(?:\s+[A-Za-z]+){2,}\b/g,
   ];
   
@@ -56,12 +54,12 @@ function extractResumeContent(content: string): string {
     }
   });
   
-  if (strategy1Text.length > 300) {
+  if (strategy1Text.length > 500) {
     extractedText = strategy1Text;
-    bestStrategy = 'Enhanced pattern extraction';
+    bestStrategy = 'Pattern-based extraction';
   }
   
-  // Strategy 2: PDF structure cleaning
+  // Strategy 2: PDF structure cleaning and text extraction
   console.log(`Trying Strategy 2: PDF structure cleaning...`);
   const strategy2Text = content
     .replace(/%PDF-[\d.]+/g, ' ')
@@ -76,12 +74,12 @@ function extractResumeContent(content: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   
-  if (strategy2Text.length > extractedText.length && strategy2Text.length > 300) {
+  if (strategy2Text.length > extractedText.length && strategy2Text.length > 500) {
     extractedText = strategy2Text;
     bestStrategy = 'PDF structure cleaning';
   }
   
-  // Strategy 3: Character-by-character filtering
+  // Strategy 3: Character-by-character filtering for corrupted PDFs
   console.log(`Trying Strategy 3: Character filtering...`);
   let strategy3Text = '';
   for (let i = 0; i < content.length; i++) {
@@ -98,145 +96,242 @@ function extractResumeContent(content: string): string {
   
   strategy3Text = strategy3Text.replace(/\s+/g, ' ').trim();
   
-  if (strategy3Text.length > extractedText.length && strategy3Text.length > 300) {
+  if (strategy3Text.length > extractedText.length && strategy3Text.length > 500) {
     extractedText = strategy3Text;
     bestStrategy = 'Character filtering';
   }
   
-  // Final fallback
-  if (extractedText.length < 100) {
+  // Strategy 4: Raw text extraction as fallback
+  if (extractedText.length < 200) {
     const fallbackText = content
       .replace(/\0/g, ' ')
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    if (fallbackText.length > 50) {
+    if (fallbackText.length > 100) {
       extractedText = fallbackText;
-      bestStrategy = 'Fallback extraction';
+      bestStrategy = 'Raw text extraction';
     }
   }
   
-  const result = extractedText.substring(0, 5000).trim();
+  const result = extractedText.substring(0, 8000).trim();
   
   console.log(`=== EXTRACTION COMPLETED ===`);
   console.log(`Best strategy: ${bestStrategy}`);
   console.log(`Final content length: ${result.length} characters`);
-  console.log(`Sample: ${result.substring(0, 200)}...`);
+  console.log(`Sample: ${result.substring(0, 300)}...`);
   
   return result;
 }
 
-// Improved AI prompt with strict JSON requirements
-function createParsingPrompt(content: string): string {
-  return `You are a professional resume parser. Follow these steps EXACTLY and return ONLY valid JSON.
+// Step-by-step AI parsing with multiple attempts
+async function parseResumeWithAI(content: string, groqApiKey: string): Promise<any> {
+  console.log(`=== AI PARSING STARTED ===`);
+  
+  // Step 1: Parse basic information
+  const basicInfoPrompt = `Extract ONLY the basic contact information from this resume text. Return ONLY valid JSON with no additional text.
 
-PARSING STEPS:
-1. FIND NAME: Look for the candidate's full name (usually at the top)
-2. EXTRACT CONTACT: Find email, phone, LinkedIn, location
-3. IDENTIFY SKILLS: Extract all technical and soft skills mentioned
-4. GET EXPERIENCE: Find job positions, companies, dates, descriptions
-5. EXTRACT EDUCATION: Find degrees, institutions, graduation years
-6. FIND PROJECTS: Look for personal/professional projects
+Resume text: ${content.substring(0, 3000)}
 
-CRITICAL RULES:
-- Return ONLY valid JSON - no explanations, no markdown, no text outside JSON
-- Use empty string "" for missing text fields
-- Use empty array [] for missing array fields
-- Be thorough - extract ALL available information
-- Do NOT make up information
-
-Resume content:
-${content}
-
-Return this EXACT JSON structure:
+Return this exact JSON structure:
 {
   "full_name": "",
   "email": "",
   "phone_number": "",
   "linkedin_url": "",
-  "location": "",
-  "professional_summary": "",
-  "work_experience": [
-    {
-      "company": "",
-      "position": "",
-      "duration": "",
-      "description": ""
-    }
-  ],
-  "education": [
-    {
-      "institution": "",
-      "degree": "",
-      "field_of_study": "",
-      "graduation_year": ""
-    }
-  ],
-  "skills": [],
-  "projects": [
-    {
-      "name": "",
-      "description": "",
-      "technologies": []
-    }
-  ]
+  "location": ""
 }`;
+
+  console.log(`Step 1: Extracting basic information...`);
+  const basicInfo = await callGroqAPI(basicInfoPrompt, groqApiKey);
+  console.log(`Basic info extracted:`, basicInfo);
+
+  // Step 2: Parse skills
+  const skillsPrompt = `Extract ALL skills, technologies, and competencies from this resume text. Return ONLY a JSON array of skills.
+
+Resume text: ${content}
+
+Return ONLY a JSON array like this:
+["JavaScript", "Python", "React", "Node.js", "SQL", "Project Management"]`;
+
+  console.log(`Step 2: Extracting skills...`);
+  const skillsResponse = await callGroqAPI(skillsPrompt, groqApiKey);
+  const skills = Array.isArray(skillsResponse) ? skillsResponse : [];
+  console.log(`Skills extracted:`, skills);
+
+  // Step 3: Parse work experience
+  const experiencePrompt = `Extract ALL work experience from this resume text. Return ONLY valid JSON array.
+
+Resume text: ${content}
+
+Return this exact JSON structure:
+[
+  {
+    "company": "",
+    "position": "",
+    "duration": "",
+    "description": ""
+  }
+]`;
+
+  console.log(`Step 3: Extracting work experience...`);
+  const workExperience = await callGroqAPI(experiencePrompt, groqApiKey);
+  const experience = Array.isArray(workExperience) ? workExperience : [];
+  console.log(`Experience extracted:`, experience);
+
+  // Step 4: Parse education
+  const educationPrompt = `Extract ALL education information from this resume text. Return ONLY valid JSON array.
+
+Resume text: ${content}
+
+Return this exact JSON structure:
+[
+  {
+    "institution": "",
+    "degree": "",
+    "field_of_study": "",
+    "graduation_year": ""
+  }
+]`;
+
+  console.log(`Step 4: Extracting education...`);
+  const educationResponse = await callGroqAPI(educationPrompt, groqApiKey);
+  const education = Array.isArray(educationResponse) ? educationResponse : [];
+  console.log(`Education extracted:`, education);
+
+  // Step 5: Parse projects
+  const projectsPrompt = `Extract ANY projects or portfolios from this resume text. Return ONLY valid JSON array.
+
+Resume text: ${content}
+
+Return this exact JSON structure:
+[
+  {
+    "name": "",
+    "description": "",
+    "technologies": []
+  }
+]`;
+
+  console.log(`Step 5: Extracting projects...`);
+  const projectsResponse = await callGroqAPI(projectsPrompt, groqApiKey);
+  const projects = Array.isArray(projectsResponse) ? projectsResponse : [];
+  console.log(`Projects extracted:`, projects);
+
+  // Step 6: Generate professional summary
+  const summaryPrompt = `Based on this resume content, write a 2-3 sentence professional summary. Return ONLY the summary text, no JSON.
+
+Resume text: ${content.substring(0, 2000)}`;
+
+  console.log(`Step 6: Generating professional summary...`);
+  const summaryResponse = await callGroqAPI(summaryPrompt, groqApiKey);
+  const professionalSummary = typeof summaryResponse === 'string' ? summaryResponse : '';
+  console.log(`Summary generated:`, professionalSummary);
+
+  // Combine all extracted data
+  const finalData = {
+    full_name: basicInfo?.full_name || '',
+    email: basicInfo?.email || '',
+    phone_number: basicInfo?.phone_number || '',
+    linkedin_url: basicInfo?.linkedin_url || '',
+    location: basicInfo?.location || '',
+    professional_summary: professionalSummary.substring(0, 500),
+    work_experience: experience,
+    education: education,
+    skills: skills.slice(0, 50),
+    projects: projects
+  };
+
+  console.log(`=== AI PARSING COMPLETED ===`);
+  console.log(`Final extracted data:`, JSON.stringify(finalData, null, 2));
+  
+  return finalData;
 }
 
-// Robust JSON parsing with multiple cleaning attempts
-function parseAIResponse(response: string): any {
-  console.log(`=== JSON PARSING STARTED ===`);
-  console.log(`Response length: ${response.length}`);
-  
-  let jsonText = response.trim();
-  
-  // Remove markdown formatting
-  jsonText = jsonText.replace(/```json\s*/gi, '');
-  jsonText = jsonText.replace(/```\s*/gi, '');
-  jsonText = jsonText.replace(/^\s*```/gm, '');
-  jsonText = jsonText.replace(/```\s*$/gm, '');
-  
-  // Find JSON boundaries
-  let startIndex = jsonText.indexOf('{');
-  let endIndex = jsonText.lastIndexOf('}');
-  
-  if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-    throw new Error('No valid JSON object found in response');
-  }
-  
-  jsonText = jsonText.substring(startIndex, endIndex + 1);
-  
-  // Clean common JSON issues
-  jsonText = jsonText
-    .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
-    .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
-    .replace(/([^\\])"/g, '$1"')  // Fix unescaped quotes
-    .replace(/"\s*:\s*"([^"]*?[^\\])"/g, '": "$1"')  // Fix quote issues in values
-    .replace(/\n/g, ' ')  // Remove newlines
-    .replace(/\s+/g, ' ');  // Normalize spaces
-  
-  // Additional cleaning for common issues
-  const commonFixes = [
-    [/"\s*0409183911,/g, '"0409183911",'],  // Fix missing quotes after phone numbers
-    [/"\s*(\d+),/g, '"$1",'],  // Fix missing quotes after numbers
-    [/,\s*,/g, ','],  // Remove double commas
-    [/:\s*,/g, ': "",'],  // Fix empty values
-  ];
-  
-  commonFixes.forEach(([pattern, replacement]) => {
-    jsonText = jsonText.replace(pattern, replacement);
-  });
-  
-  console.log(`Cleaned JSON length: ${jsonText.length}`);
-  
-  try {
-    const parsed = JSON.parse(jsonText);
-    console.log(`JSON parsing successful`);
-    return parsed;
-  } catch (error) {
-    console.error(`JSON parse failed: ${error.message}`);
-    console.error(`Problematic JSON: ${jsonText.substring(0, 500)}...`);
-    throw new Error(`Failed to parse JSON: ${error.message}`);
+// Enhanced Groq API call with robust error handling
+async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Groq API attempt ${attempt}/${maxRetries}`);
+      
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-70b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert resume parser. Extract information accurately and return ONLY the requested JSON format. No explanations, no markdown, just clean JSON or the requested format.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          top_p: 0.1,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Groq API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      
+      if (!content) {
+        throw new Error('No content in Groq response');
+      }
+
+      console.log(`Raw AI response: ${content.substring(0, 200)}...`);
+
+      // Try to parse as JSON first
+      try {
+        return JSON.parse(content.trim());
+      } catch (jsonError) {
+        // If not JSON, clean and try again
+        let cleanedContent = content.trim();
+        
+        // Remove markdown formatting
+        cleanedContent = cleanedContent.replace(/```json\s*/gi, '');
+        cleanedContent = cleanedContent.replace(/```\s*/gi, '');
+        
+        // Find JSON boundaries
+        const jsonStart = cleanedContent.indexOf('{') !== -1 ? cleanedContent.indexOf('{') : cleanedContent.indexOf('[');
+        const jsonEnd = cleanedContent.lastIndexOf('}') !== -1 ? cleanedContent.lastIndexOf('}') : cleanedContent.lastIndexOf(']');
+        
+        if (jsonStart !== -1 && jsonEnd !== -1 && jsonStart < jsonEnd) {
+          cleanedContent = cleanedContent.substring(jsonStart, jsonEnd + 1);
+          
+          try {
+            return JSON.parse(cleanedContent);
+          } catch (secondJsonError) {
+            console.log(`JSON parsing failed, returning raw content: ${cleanedContent}`);
+            return cleanedContent; // Return raw text for summary
+          }
+        }
+        
+        return content; // Return raw content if no JSON found
+      }
+      
+    } catch (error) {
+      console.error(`Groq API attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      const delay = Math.min(2000 * attempt, 8000);
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 }
 
@@ -286,7 +381,7 @@ function validateParsedData(data: any): any {
     cleaned.skills = data.skills
       .map((skill: any) => String(skill).trim())
       .filter((skill: string) => skill.length > 0)
-      .slice(0, 50);  // Limit to 50 skills
+      .slice(0, 50);
   }
   
   // Clean projects
@@ -312,72 +407,6 @@ function validateParsedData(data: any): any {
   console.log(`Projects: ${cleaned.projects.length} found`);
   
   return cleaned;
-}
-
-// Enhanced Groq API call with better error handling
-async function callGroqAPI(prompt: string, groqApiKey: string, maxRetries = 3): Promise<any> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`=== GROQ API ATTEMPT ${attempt}/${maxRetries} ===`);
-      
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama3-70b-8192',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert resume parser. Extract information accurately and return ONLY valid JSON. No explanations, no markdown, just clean JSON.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 3000,
-          top_p: 0.1,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Groq API error (attempt ${attempt}): ${response.status} - ${errorText}`);
-        
-        if (attempt === maxRetries) {
-          throw new Error(`Groq API failed after ${maxRetries} attempts: ${response.status}`);
-        }
-        
-        const delay = Math.min(2000 * attempt, 10000);
-        console.log(`Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      const data = await response.json();
-      console.log(`Groq API success on attempt ${attempt}`);
-      
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error('Invalid response structure from Groq API');
-      }
-      
-      return data;
-      
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed: ${error.message}`);
-      
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      
-      const delay = Math.min(1000 * attempt, 5000);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
 }
 
 serve(async (req) => {
@@ -442,7 +471,7 @@ serve(async (req) => {
       throw new Error('File contains no readable text');
     }
     
-    // Extract content with enhanced strategies
+    // Extract content with multiple strategies
     const extractedContent = extractResumeContent(fullContent);
     
     if (extractedContent.length < 100) {
@@ -450,38 +479,31 @@ serve(async (req) => {
       throw new Error('Could not extract meaningful content from resume');
     }
     
-    // Create parsing prompt
-    const prompt = createParsingPrompt(extractedContent);
-
-    // Call Groq API
-    const groqData = await callGroqAPI(prompt, groqApiKey);
+    // Parse with AI step by step
+    const parsedData = await parseResumeWithAI(extractedContent, groqApiKey);
     
-    const aiResponse = groqData.choices[0].message.content.trim();
-    console.log(`=== AI RESPONSE RECEIVED ===`);
-    console.log(`Response length: ${aiResponse.length}`);
-    
-    // Parse and validate the response
-    const rawParsedData = parseAIResponse(aiResponse);
-    const parsedData = validateParsedData(rawParsedData);
+    // Validate and clean the data
+    const cleanedData = validateParsedData(parsedData);
     
     // Check if we extracted meaningful data
-    const hasBasicInfo = parsedData.full_name || parsedData.email || 
-                        parsedData.skills.length > 0 || 
-                        parsedData.work_experience.length > 0 || 
-                        parsedData.education.length > 0;
+    const hasBasicInfo = cleanedData.full_name || cleanedData.email || 
+                        cleanedData.skills.length > 0 || 
+                        cleanedData.work_experience.length > 0 || 
+                        cleanedData.education.length > 0;
     
     if (!hasBasicInfo) {
-      console.warn('=== WARNING: NO MEANINGFUL DATA EXTRACTED ===');
+      console.warn('=== WARNING: LIMITED DATA EXTRACTED ===');
+      console.warn('This may be due to poor file quality or unusual formatting');
     } else {
-      console.log('=== SUCCESS: DATA EXTRACTED SUCCESSFULLY ===');
+      console.log('=== SUCCESS: COMPREHENSIVE DATA EXTRACTED ===');
     }
 
     // Update resume with parsed data
     const { error: updateError } = await supabase
       .from('resumes')
       .update({
-        parsed_data: parsedData,
-        skills_extracted: parsedData.skills || [],
+        parsed_data: cleanedData,
+        skills_extracted: cleanedData.skills || [],
         upload_status: 'parsed_success'
       })
       .eq('id', resumeId);
@@ -495,8 +517,11 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ 
       success: true, 
-      parsedData,
-      message: 'Resume parsed successfully'
+      parsedData: cleanedData,
+      skillsCount: cleanedData.skills.length,
+      experienceCount: cleanedData.work_experience.length,
+      educationCount: cleanedData.education.length,
+      message: 'Resume parsed successfully with comprehensive data extraction'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
