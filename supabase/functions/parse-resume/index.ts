@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Enhanced content extraction with multiple strategies
+// Improved content extraction with better PDF and DOCX handling
 function extractContentFromFile(rawContent: string, contentType: string): string {
   console.log(`=== CONTENT EXTRACTION STARTED ===`);
   console.log(`Content type: ${contentType}`);
@@ -20,173 +20,166 @@ function extractContentFromFile(rawContent: string, contentType: string): string
   
   let extractedText = '';
   
-  // Strategy 1: Handle DOCX files (look for XML content)
+  // Strategy 1: Handle PDF files with better text extraction
+  if (contentType?.includes('pdf')) {
+    console.log('Processing PDF content with improved extraction');
+    
+    // Look for text between parentheses (common in PDF text objects)
+    const textInParentheses = rawContent.match(/\(([^)]+)\)/g);
+    if (textInParentheses && textInParentheses.length > 0) {
+      extractedText = textInParentheses
+        .map(match => match.slice(1, -1)) // Remove parentheses
+        .filter(text => text.length > 1 && /[a-zA-Z]/.test(text))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      console.log(`Extracted ${extractedText.length} chars from PDF parentheses`);
+    }
+    
+    // Fallback: Look for text between square brackets
+    if (extractedText.length < 100) {
+      const textInBrackets = rawContent.match(/\[([^\]]+)\]/g);
+      if (textInBrackets) {
+        const bracketText = textInBrackets
+          .map(match => match.slice(1, -1))
+          .filter(text => text.length > 2 && /[a-zA-Z]/.test(text))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        if (bracketText.length > extractedText.length) {
+          extractedText = bracketText;
+        }
+      }
+    }
+    
+    // Enhanced fallback: Extract readable ASCII sequences
+    if (extractedText.length < 100) {
+      extractedText = extractReadableSequences(rawContent);
+    }
+  }
+  
+  // Strategy 2: Handle DOCX files with XML parsing
   if (contentType?.includes('wordprocessingml') || contentType?.includes('docx')) {
-    console.log('Processing DOCX content');
+    console.log('Processing DOCX content with XML extraction');
     
     // Extract text from Word document XML structure
     const xmlMatches = rawContent.match(/<w:t[^>]*>([^<]+)<\/w:t>/g);
     if (xmlMatches && xmlMatches.length > 0) {
       extractedText = xmlMatches
         .map(match => match.replace(/<[^>]+>/g, ''))
+        .filter(text => text.length > 0)
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
       console.log(`Extracted ${extractedText.length} chars from DOCX XML`);
     }
     
-    // Fallback: Look for text between XML tags
+    // Fallback for DOCX: Look for readable text patterns
     if (extractedText.length < 100) {
-      const textBetweenTags = rawContent.match(/>[^<]{3,}/g);
-      if (textBetweenTags) {
-        extractedText = textBetweenTags
-          .map(match => match.substring(1).trim())
-          .filter(text => text.length > 2 && /[a-zA-Z]/.test(text))
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
+      extractedText = extractReadableSequences(rawContent);
     }
   }
   
-  // Strategy 2: Handle PDF files with better text pattern extraction
-  if (contentType?.includes('pdf') || extractedText.length < 100) {
-    console.log('Processing PDF content');
-    
-    // Look for PDF text streams
-    const streamMatches = rawContent.match(/stream\s*([\s\S]*?)\s*endstream/g);
-    if (streamMatches) {
-      for (const stream of streamMatches) {
-        const streamContent = stream.replace(/^stream\s*|\s*endstream$/g, '');
-        const readableText = extractReadableText(streamContent);
-        if (readableText.length > extractedText.length) {
-          extractedText = readableText;
-        }
-      }
-    }
-    
-    // Look for text objects in PDF
-    const textObjects = rawContent.match(/\(([^)]{3,})\)\s*Tj/g);
-    if (textObjects && textObjects.length > 0) {
-      const pdfText = textObjects
-        .map(match => match.replace(/[()]/g, '').replace(/\s*Tj\s*$/g, ''))
-        .filter(text => text.length > 1 && /[a-zA-Z0-9@.]/.test(text))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      
-      if (pdfText.length > extractedText.length) {
-        extractedText = pdfText;
-      }
-    }
+  // Strategy 3: Plain text or fallback extraction
+  if (extractedText.length < 50) {
+    console.log('Using fallback text extraction');
+    extractedText = extractReadableSequences(rawContent);
   }
   
-  // Strategy 3: General ASCII text extraction for all formats
-  if (extractedText.length < 100) {
-    console.log('Using general ASCII extraction');
-    extractedText = extractReadableText(rawContent);
-  }
-  
-  // Clean and enhance the extracted text
+  // Clean and validate the extracted text
   extractedText = cleanExtractedText(extractedText);
   
   if (extractedText.length < 50) {
     throw new Error('Could not extract sufficient readable content from file');
   }
   
-  const result = extractedText.substring(0, 12000); // Increased limit
+  const result = extractedText.substring(0, 15000); // Increased limit
   console.log(`Final extracted content length: ${result.length} characters`);
-  console.log(`Sample: ${result.substring(0, 300)}...`);
+  console.log(`Sample extracted text: ${result.substring(0, 500)}...`);
   
   return result;
 }
 
-function extractReadableText(content: string): string {
-  let text = '';
-  let wordBuffer = '';
+function extractReadableSequences(content: string): string {
+  const sequences = [];
+  let currentSequence = '';
   
   for (let i = 0; i < content.length; i++) {
     const char = content[i];
     const code = char.charCodeAt(0);
     
-    // Include printable ASCII characters and common symbols
+    // Check for readable ASCII characters
     if ((code >= 32 && code <= 126) || char === '\n' || char === '\r' || char === '\t') {
-      if (/[a-zA-Z0-9\s@._\-+#():\/\\]/.test(char)) {
-        wordBuffer += char;
-      } else if (wordBuffer.length > 0) {
-        text += wordBuffer + ' ';
-        wordBuffer = '';
+      if (/[a-zA-Z0-9\s@._\-+#():\/\\,!?&]/.test(char)) {
+        currentSequence += char;
+      } else if (currentSequence.length >= 3) {
+        sequences.push(currentSequence.trim());
+        currentSequence = '';
       }
-    } else if (wordBuffer.length > 0) {
-      text += wordBuffer + ' ';
-      wordBuffer = '';
+    } else if (currentSequence.length >= 3) {
+      sequences.push(currentSequence.trim());
+      currentSequence = '';
     }
   }
   
-  if (wordBuffer.length > 0) {
-    text += wordBuffer;
+  if (currentSequence.length >= 3) {
+    sequences.push(currentSequence.trim());
   }
   
-  return text.replace(/\s+/g, ' ').trim();
+  return sequences
+    .filter(seq => seq.length >= 3 && /[a-zA-Z]/.test(seq))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function cleanExtractedText(text: string): string {
   return text
-    // Remove PDF artifacts
+    // Remove PDF artifacts and noise
     .replace(/obj\s+\d+/g, ' ')
     .replace(/endobj/g, ' ')
     .replace(/\/[A-Z][A-Za-z0-9]*\s*/g, ' ')
     .replace(/<<[^>]*>>/g, ' ')
     .replace(/\[[^\]]*\]/g, ' ')
-    // Remove excessive whitespace and special characters
-    .replace(/[^\w\s@._\-(),+#:\/\\]/g, ' ')
+    .replace(/\d+\s+0\s+R/g, ' ')
+    // Clean up whitespace and special characters
+    .replace(/[^\w\s@._\-(),+#:\/\\!?&]/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/(\w)\s+(\w)/g, '$1 $2')
     .trim();
 }
 
-// Enhanced AI parsing with better prompts and validation
+// Enhanced AI parsing with stricter JSON-only output
 async function parseWithAI(content: string, groqApiKey: string): Promise<any> {
   console.log(`=== AI PARSING STARTED ===`);
   console.log(`Content length: ${content.length} characters`);
   
-  const systemPrompt = `You are a professional resume parsing expert. Your task is to extract specific information from resume text and return ONLY a valid JSON object.
+  const systemPrompt = `You are a professional resume parsing expert. Extract information from resume text and return ONLY a valid JSON object.
 
-CRITICAL INSTRUCTIONS:
-1. Return ONLY valid JSON - no explanations, no markdown, no text before or after
+CRITICAL RULES:
+1. Return ONLY valid JSON - absolutely no other text
 2. Your response must start with { and end with }
-3. Extract information exactly as found - do not invent or guess
-4. For missing information, use null for strings/objects or [] for arrays
-5. Be thorough in extracting all skills, experience, and contact details
+3. Do not include explanations, markdown, or any text outside the JSON
+4. Extract information exactly as found - never invent details
+5. For missing information: use null for strings/objects, [] for arrays
 
-EXTRACTION RULES:
-- candidate_name: Look for the person's full name (usually at the top)
-- email: Extract any email addresses (look for @ symbol)
-- phone: Extract phone numbers (various formats)
-- skills: Include ALL technical skills, programming languages, tools, software, certifications
-- work_experience: Extract ALL job positions with dates and responsibilities
-- dates: Keep original format (e.g., "Jan 2020", "2019-2021", "Present")`;
-
-  const extractionPrompt = `Extract information from this resume and return ONLY the JSON object:
-
-${content}
-
-Return ONLY this JSON structure:
+REQUIRED JSON STRUCTURE:
 {
-  "candidate_name": "extract full name or null",
+  "candidate_name": "full name or null",
   "contact_information": {
-    "email": "extract email or null",
-    "phone": "extract phone or null",
-    "linkedin_url": "extract LinkedIn URL or null",
-    "github_url": "extract GitHub URL or null",
-    "portfolio_url": "extract portfolio URL or null",
-    "location": "extract location or null"
+    "email": "email or null",
+    "phone": "phone or null", 
+    "linkedin_url": "LinkedIn URL or null",
+    "github_url": "GitHub URL or null",
+    "portfolio_url": "portfolio URL or null",
+    "location": "location or null"
   },
-  "skills": ["extract", "all", "skills"],
+  "skills": ["skill1", "skill2"],
   "work_experience": [
     {
-      "job_title": "job title",
-      "company_name": "company name",
+      "job_title": "title",
+      "company_name": "company", 
       "start_date": "start date",
       "end_date": "end date or Present",
       "responsibilities_achievements": ["responsibility 1", "responsibility 2"]
@@ -194,7 +187,13 @@ Return ONLY this JSON structure:
   ]
 }`;
 
-  const models = ['llama3-8b-8192', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+  const extractionPrompt = `Extract information from this resume text and return ONLY the JSON object (no other text):
+
+${content}
+
+Return only the JSON object following the exact structure specified.`;
+
+  const models = ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768'];
   let lastError = null;
   
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -202,7 +201,7 @@ Return ONLY this JSON structure:
       console.log(`Attempt ${attempt}/3`);
       
       if (attempt > 1) {
-        const delay = Math.min(5000 * attempt, 15000);
+        const delay = Math.min(3000 * attempt, 10000);
         console.log(`Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -234,7 +233,7 @@ Return ONLY this JSON structure:
         console.error(`Groq API error ${response.status}: ${errorText}`);
         
         if (response.status === 429) {
-          const waitTime = Math.min(15000 * attempt, 60000);
+          const waitTime = Math.min(10000 * attempt, 30000);
           console.log(`Rate limited, waiting ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
@@ -253,9 +252,9 @@ Return ONLY this JSON structure:
         throw new Error('No content in Groq response');
       }
 
-      console.log(`Raw AI Response: ${aiContent.substring(0, 500)}...`);
+      console.log(`Raw AI Response (first 500 chars): ${aiContent.substring(0, 500)}...`);
       
-      // Enhanced JSON parsing
+      // Parse JSON response
       const parsed = parseJSONResponse(aiContent);
       
       if (parsed) {
@@ -287,13 +286,19 @@ function parseJSONResponse(aiContent: string): any {
     // Remove markdown code blocks
     jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
     
-    // Extract JSON object
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[0];
+    // Remove any text before the first {
+    const firstBrace = jsonStr.indexOf('{');
+    if (firstBrace > 0) {
+      jsonStr = jsonStr.substring(firstBrace);
     }
     
-    // Clean common issues
+    // Remove any text after the last }
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (lastBrace > 0) {
+      jsonStr = jsonStr.substring(0, lastBrace + 1);
+    }
+    
+    // Clean common JSON formatting issues
     jsonStr = jsonStr
       .replace(/,\s*}/g, '}')
       .replace(/,\s*]/g, ']')
@@ -302,7 +307,7 @@ function parseJSONResponse(aiContent: string): any {
       .replace(/\s+/g, ' ')
       .trim();
     
-    console.log(`Parsing cleaned JSON: ${jsonStr.substring(0, 200)}...`);
+    console.log(`Attempting to parse cleaned JSON: ${jsonStr.substring(0, 200)}...`);
     
     const parsed = JSON.parse(jsonStr);
     
@@ -319,7 +324,7 @@ function parseJSONResponse(aiContent: string): any {
 }
 
 function createEnhancedFallback(content: string): any {
-  console.log('Creating enhanced fallback with basic extraction');
+  console.log('Creating enhanced fallback with regex extraction');
   
   const fallback = {
     candidate_name: null,
@@ -335,30 +340,37 @@ function createEnhancedFallback(content: string): any {
     work_experience: []
   };
   
-  // Basic email extraction
+  // Enhanced email extraction
   const emailMatch = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if (emailMatch) {
     fallback.contact_information.email = emailMatch[0];
   }
   
-  // Basic phone extraction
+  // Enhanced phone extraction
   const phoneMatch = content.match(/[\+]?[1-9]?[\-\.\s]?\(?[0-9]{3}\)?[\-\.\s]?[0-9]{3}[\-\.\s]?[0-9]{4}/);
   if (phoneMatch) {
     fallback.contact_information.phone = phoneMatch[0];
   }
   
-  // Basic LinkedIn extraction
+  // LinkedIn extraction
   const linkedinMatch = content.match(/linkedin\.com\/in\/[a-zA-Z0-9\-]+/);
   if (linkedinMatch) {
-    fallback.contact_information.linkedin_url = linkedinMatch[0];
+    fallback.contact_information.linkedin_url = `https://${linkedinMatch[0]}`;
   }
   
-  // Basic skills extraction (common technical terms)
+  // GitHub extraction
+  const githubMatch = content.match(/github\.com\/[a-zA-Z0-9\-]+/);
+  if (githubMatch) {
+    fallback.contact_information.github_url = `https://${githubMatch[0]}`;
+  }
+  
+  // Enhanced skills extraction
   const skillKeywords = [
-    'JavaScript', 'Python', 'Java', 'React', 'Node.js', 'HTML', 'CSS', 
-    'SQL', 'Git', 'AWS', 'Docker', 'TypeScript', 'Angular', 'Vue.js',
-    'MongoDB', 'PostgreSQL', 'MySQL', 'Express', 'Django', 'Flask',
-    'C++', 'C#', 'PHP', 'Ruby', 'Go', 'Rust', 'Swift', 'Kotlin'
+    'JavaScript', 'Python', 'Java', 'React', 'Node.js', 'HTML', 'CSS', 'TypeScript',
+    'SQL', 'Git', 'AWS', 'Docker', 'Angular', 'Vue.js', 'MongoDB', 'PostgreSQL',
+    'MySQL', 'Express', 'Django', 'Flask', 'C++', 'C#', 'PHP', 'Ruby', 'Go',
+    'Rust', 'Swift', 'Kotlin', 'React Native', 'Flutter', 'Redux', 'GraphQL',
+    'REST API', 'Microservices', 'Kubernetes', 'Jenkins', 'CI/CD', 'Agile', 'Scrum'
   ];
   
   skillKeywords.forEach(skill => {
@@ -367,6 +379,16 @@ function createEnhancedFallback(content: string): any {
       fallback.skills.push(skill);
     }
   });
+  
+  // Try to extract name from the beginning of the content
+  const lines = content.split('\n').filter(line => line.trim().length > 0);
+  if (lines.length > 0) {
+    const firstLine = lines[0].trim();
+    // Check if first line looks like a name (contains letters and is reasonable length)
+    if (firstLine.length < 50 && /^[a-zA-Z\s]+$/.test(firstLine) && firstLine.split(' ').length >= 2) {
+      fallback.candidate_name = firstLine;
+    }
+  }
   
   return fallback;
 }
@@ -394,7 +416,7 @@ function validateAndStructureData(data: any): any {
     work_experience: []
   };
   
-  // Validate candidate name (more flexible)
+  // Validate candidate name
   if (data.candidate_name && typeof data.candidate_name === 'string') {
     const name = data.candidate_name.trim();
     if (name.length > 0 && name.length < 150 && /[a-zA-Z]/.test(name)) {
@@ -414,10 +436,10 @@ function validateAndStructureData(data: any): any {
       }
     }
     
-    // Phone validation (more flexible)
+    // Phone validation
     if (contact.phone && typeof contact.phone === 'string') {
       const phone = contact.phone.trim();
-      if (phone.length > 6 && /[\d\-\(\)\s\+]/.test(phone)) {
+      if (phone.length > 6) {
         result.contact_information.phone = phone;
       }
     }
@@ -426,8 +448,8 @@ function validateAndStructureData(data: any): any {
     ['linkedin_url', 'github_url', 'portfolio_url'].forEach(field => {
       if (contact[field] && typeof contact[field] === 'string') {
         const url = contact[field].trim();
-        if (url.length > 5 && (url.includes('http') || url.includes('www.') || url.includes('.com'))) {
-          result.contact_information[field] = url;
+        if (url.length > 5) {
+          result.contact_information[field] = url.startsWith('http') ? url : `https://${url}`;
         }
       }
     });
@@ -441,13 +463,13 @@ function validateAndStructureData(data: any): any {
     }
   }
   
-  // Validate skills (more inclusive)
+  // Validate skills
   if (Array.isArray(data.skills)) {
     result.skills = data.skills
       .filter(skill => skill && typeof skill === 'string')
       .map(skill => skill.trim())
       .filter(skill => skill.length > 0 && skill.length < 100)
-      .slice(0, 100); // Increased limit
+      .slice(0, 50); // Limit skills
   }
   
   // Validate work experience
@@ -463,7 +485,6 @@ function validateAndStructureData(data: any): any {
           responsibilities_achievements: []
         };
         
-        // More flexible validation for job fields
         if (exp.job_title && typeof exp.job_title === 'string') {
           const title = exp.job_title.trim();
           if (title.length > 0 && title.length < 200) {
@@ -491,13 +512,13 @@ function validateAndStructureData(data: any): any {
             .filter(resp => resp && typeof resp === 'string')
             .map(resp => resp.trim())
             .filter(resp => resp.length > 0 && resp.length < 1000)
-            .slice(0, 20); // Increased limit
+            .slice(0, 10);
         }
         
         return experience;
       })
-      .filter(exp => exp.job_title || exp.company_name) // Keep if has either
-      .slice(0, 25); // Increased limit
+      .filter(exp => exp.job_title || exp.company_name)
+      .slice(0, 20);
   }
   
   console.log(`Validation complete - Name: ${result.candidate_name ? 'Found' : 'Missing'}, Email: ${result.contact_information.email ? 'Found' : 'Missing'}, Skills: ${result.skills.length}, Experience: ${result.work_experience.length}`);
@@ -553,7 +574,7 @@ serve(async (req) => {
       throw new Error(`File download failed: ${fileError.message}`);
     }
 
-    // Extract text content with content type awareness
+    // Extract text content with improved extraction
     const rawContent = await fileData.text();
     const extractedContent = extractContentFromFile(rawContent, resume.content_type);
     
