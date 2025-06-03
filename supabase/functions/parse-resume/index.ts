@@ -94,9 +94,10 @@ function extractContentFromFile(rawContent: string, contentType: string): string
     throw new Error('Could not extract sufficient readable content from file');
   }
   
-  const result = extractedText.substring(0, 15000); // Increased limit
+  // Limit content to prevent context length issues
+  const result = extractedText.substring(0, 8000);
   console.log(`Final extracted content length: ${result.length} characters`);
-  console.log(`Sample extracted text: ${result.substring(0, 500)}...`);
+  console.log(`Sample extracted text: ${result.substring(0, 200)}...`);
   
   return result;
 }
@@ -150,7 +151,7 @@ function cleanExtractedText(text: string): string {
     .trim();
 }
 
-// Enhanced AI parsing with stricter JSON-only output
+// Enhanced AI parsing with updated models and reduced content length
 async function parseWithAI(content: string, groqApiKey: string): Promise<any> {
   console.log(`=== AI PARSING STARTED ===`);
   console.log(`Content length: ${content.length} characters`);
@@ -187,13 +188,8 @@ REQUIRED JSON STRUCTURE:
   ]
 }`;
 
-  const extractionPrompt = `Extract information from this resume text and return ONLY the JSON object (no other text):
-
-${content}
-
-Return only the JSON object following the exact structure specified.`;
-
-  const models = ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768'];
+  // Updated models list without deprecated model
+  const models = ['llama3-70b-8192', 'llama3-8b-8192', 'gemma2-9b-it'];
   let lastError = null;
   
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -201,7 +197,7 @@ Return only the JSON object following the exact structure specified.`;
       console.log(`Attempt ${attempt}/3`);
       
       if (attempt > 1) {
-        const delay = Math.min(3000 * attempt, 10000);
+        const delay = Math.min(2000 * attempt, 8000);
         console.log(`Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -220,10 +216,10 @@ Return only the JSON object following the exact structure specified.`;
           model: selectedModel,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: extractionPrompt }
+            { role: 'user', content: `Extract information from this resume text and return ONLY the JSON object:\n\n${content}` }
           ],
           temperature: 0.1,
-          max_tokens: 4000,
+          max_tokens: 2000,
           top_p: 0.1,
         }),
       });
@@ -233,7 +229,7 @@ Return only the JSON object following the exact structure specified.`;
         console.error(`Groq API error ${response.status}: ${errorText}`);
         
         if (response.status === 429) {
-          const waitTime = Math.min(10000 * attempt, 30000);
+          const waitTime = Math.min(5000 * attempt, 15000);
           console.log(`Rate limited, waiting ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
@@ -252,7 +248,7 @@ Return only the JSON object following the exact structure specified.`;
         throw new Error('No content in Groq response');
       }
 
-      console.log(`Raw AI Response (first 500 chars): ${aiContent.substring(0, 500)}...`);
+      console.log(`Raw AI Response: ${aiContent.substring(0, 500)}...`);
       
       // Parse JSON response
       const parsed = parseJSONResponse(aiContent);
@@ -364,19 +360,27 @@ function createEnhancedFallback(content: string): any {
     fallback.contact_information.github_url = `https://${githubMatch[0]}`;
   }
   
-  // Enhanced skills extraction
+  // Enhanced skills extraction with safe regex
   const skillKeywords = [
     'JavaScript', 'Python', 'Java', 'React', 'Node.js', 'HTML', 'CSS', 'TypeScript',
     'SQL', 'Git', 'AWS', 'Docker', 'Angular', 'Vue.js', 'MongoDB', 'PostgreSQL',
-    'MySQL', 'Express', 'Django', 'Flask', 'C++', 'C#', 'PHP', 'Ruby', 'Go',
+    'MySQL', 'Express', 'Django', 'Flask', 'C#', 'PHP', 'Ruby', 'Go',
     'Rust', 'Swift', 'Kotlin', 'React Native', 'Flutter', 'Redux', 'GraphQL',
     'REST API', 'Microservices', 'Kubernetes', 'Jenkins', 'CI/CD', 'Agile', 'Scrum'
   ];
   
   skillKeywords.forEach(skill => {
-    const regex = new RegExp(`\\b${skill}\\b`, 'i');
-    if (regex.test(content)) {
-      fallback.skills.push(skill);
+    // Safe regex that doesn't use problematic characters
+    if (skill === 'C++') {
+      // Special handling for C++ to avoid regex issues
+      if (content.includes('C++')) {
+        fallback.skills.push(skill);
+      }
+    } else {
+      const regex = new RegExp(`\\b${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(content)) {
+        fallback.skills.push(skill);
+      }
     }
   });
   
