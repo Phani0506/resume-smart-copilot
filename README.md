@@ -1,3 +1,5 @@
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Phani0506/resume-smart-copilot?utm_source=oss&utm_medium=github&utm_campaign=Phani0506%2Fresume-smart-copilot&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 # Welcome to your Lovable project
 
 ## Project info
